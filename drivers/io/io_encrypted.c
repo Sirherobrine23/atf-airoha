@@ -209,12 +209,12 @@ static int enc_file_read(io_entity_t *entity, uintptr_t buffer, size_t length,
 					 header.tag_len);
 	memset(key, 0, key_len);
 
-
+#if defined(CONFIG_ECNT)
 		if (result == 0)
 			NOTICE("4-13\n");
 		else
 			NOTICE("4-14\n");
-
+#endif
 
 	if (result != 0) {
 		ERROR("File decryption failed (%i)\n", result);

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2023, Arm Limited and Contributors. All rights reserved.
+# Copyright (c) 2015-2020, ARM Limited and Contributors. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -13,7 +13,6 @@ endif
 # Some utility macros for manipulating awkward (whitespace) characters.
 blank			:=
 space			:=${blank} ${blank}
-comma			:= ,
 
 # A user defined function to recursively search for a filename below a directory
 #    $1 is the directory root of the recursive search (blank for current directory).
@@ -38,29 +37,11 @@ define uppercase
 $(eval uppercase_result:=$(call uppercase_internal,$(uppercase_table),$(1)))$(uppercase_result)
 endef
 
-# Convenience function for setting a variable to 0 if not previously set
-# $(eval $(call default_zero,FOO))
-define default_zero
-	$(eval $(1) ?= 0)
-endef
-
-# Convenience function for setting a list of variables to 0 if not previously set
-# $(eval $(call default_zeros,FOO BAR))
-define default_zeros
-	$(foreach var,$1,$(eval $(call default_zero,$(var))))
-endef
-
 # Convenience function for adding build definitions
 # $(eval $(call add_define,FOO)) will have:
 # -DFOO if $(FOO) is empty; -DFOO=$(FOO) otherwise
 define add_define
     DEFINES			+=	-D$(1)$(if $(value $(1)),=$(value $(1)),)
-endef
-
-# Convenience function for addding multiple build definitions
-# $(eval $(call add_defines,FOO BOO))
-define add_defines
-    $(foreach def,$1,$(eval $(call add_define,$(def))))
 endef
 
 # Convenience function for adding build definitions
@@ -73,14 +54,7 @@ endef
 # Convenience function for verifying option has a boolean value
 # $(eval $(call assert_boolean,FOO)) will assert FOO is 0 or 1
 define assert_boolean
-    $(if $($(1)),,$(error $(1) must not be empty))
     $(if $(filter-out 0 1,$($1)),$(error $1 must be boolean))
-endef
-
-# Convenience function for verifying options have boolean values
-# $(eval $(call assert_booleans,FOO BOO)) will assert FOO and BOO for 0 or 1 values
-define assert_booleans
-    $(foreach bool,$1,$(eval $(call assert_boolean,$(bool))))
 endef
 
 0-9 := 0 1 2 3 4 5 6 7 8 9
@@ -91,24 +65,6 @@ $(if $($(1)),,$(error $(1) must not be empty))
 $(eval __numeric := $($(1)))
 $(foreach d,$(0-9),$(eval __numeric := $(subst $(d),,$(__numeric))))
 $(if $(__numeric),$(error $(1) must be numeric))
-endef
-
-# Convenience function for verifying options have numeric values
-# $(eval $(call assert_numerics,FOO BOO)) will assert FOO and BOO contain numeric values
-define assert_numerics
-    $(foreach num,$1,$(eval $(call assert_numeric,$(num))))
-endef
-
-# Convenience function to check for a given linker option. An call to
-# $(call ld_option, --no-XYZ) will return --no-XYZ if supported by the linker
-define ld_option
-	$(shell if $(LD) $(1) -v >/dev/null 2>&1; then echo $(1); fi )
-endef
-
-# Convenience function to check for a given compiler option. A call to
-# $(call cc_option, --no-XYZ) will return --no-XYZ if supported by the compiler
-define cc_option
-	$(shell if $(CC) $(1) -c -x c /dev/null -o /dev/null >/dev/null 2>&1; then echo $(1); fi )
 endef
 
 # CREATE_SEQ is a recursive function to create sequence of numbers from 1 to
@@ -122,36 +78,42 @@ $(if $(word $(2), $($(1))),\
 )
 endef
 
+# IMG_LINKERFILE defines the linker script corresponding to a BL stage
+#   $(1) = BL stage (1, 2, 2u, 31, 32)
+define IMG_LINKERFILE
+    ${BUILD_DIR}/bl$(1).ld
+endef
+
 # IMG_MAPFILE defines the output file describing the memory map corresponding
 # to a BL stage
-#   $(1) = BL stage
+#   $(1) = BL stage (1, 2, 2u, 31, 32)
 define IMG_MAPFILE
-    ${BUILD_DIR}/$(1).map
+    ${BUILD_DIR}/bl$(1).map
 endef
 
 # IMG_ELF defines the elf file corresponding to a BL stage
-#   $(1) = BL stage
+#   $(1) = BL stage (1, 2, 2u, 31, 32)
 define IMG_ELF
-    ${BUILD_DIR}/$(1).elf
+    ${BUILD_DIR}/bl$(1).elf
 endef
 
 # IMG_DUMP defines the symbols dump file corresponding to a BL stage
-#   $(1) = BL stage
+#   $(1) = BL stage (1, 2, 2u, 31, 32)
 define IMG_DUMP
-    ${BUILD_DIR}/$(1).dump
+    ${BUILD_DIR}/bl$(1).dump
 endef
 
 # IMG_BIN defines the default image file corresponding to a BL stage
-#   $(1) = BL stage
+#   $(1) = BL stage (1, 2, 2u, 31, 32)
 define IMG_BIN
-    ${BUILD_PLAT}/$(1).bin
+    ${BUILD_PLAT}/bl$(1).bin
 endef
 
 # IMG_ENC_BIN defines the default encrypted image file corresponding to a
 # BL stage
-#   $(1) = BL stage
+#   $(1) = BL stage (2, 30, 31, 32, 33)
 define IMG_ENC_BIN
-    ${BUILD_PLAT}/$(1)_enc.bin
+    ${BUILD_PLAT}/bl$(1)_enc.bin
 endef
 
 # ENCRYPT_FW invokes enctool to encrypt firmware binary
@@ -160,6 +122,7 @@ endef
 define ENCRYPT_FW
 $(2): $(1) enctool
 	$$(ECHO) "  ENC     $$<"
+	$$(ECHO) "$$(ENC_ARGS)"
 	$$(Q)$$(ENCTOOL) $$(ENC_ARGS) -i $$< -o $$@
 endef
 
@@ -233,42 +196,21 @@ define TOOL_ADD_IMG
     # This is the uppercase form of the first parameter
     $(eval _V := $(call uppercase,$(1)))
 
-    # $(check_$(1)_cmd) variable is executed in the check_$(1) target and also
-    # is put into the ${CHECK_$(3)FIP_CMD} variable which is executed by the
-    # target ${BUILD_PLAT}/${$(3)FIP_NAME}.
-    $(eval check_$(1)_cmd := \
-        $(if $(value $(_V)),,$$$$(error "Platform '${PLAT}' requires $(_V). Please set $(_V) to point to the right file")) \
-        $(if $(wildcard $(value $(_V))),,$$$$(error '$(_V)=$(value $(_V))' was specified, but '$(value $(_V))' does not exist)) \
-    )
-
     $(3)CRT_DEPS += check_$(1)
-    CHECK_$(3)FIP_CMD += $$(check_$(1)_cmd)
+    $(3)FIP_DEPS += check_$(1)
 ifeq ($(4),1)
     $(eval ENC_BIN := ${BUILD_PLAT}/$(1)_enc.bin)
     $(call ENCRYPT_FW,$(value $(_V)),$(ENC_BIN))
     $(call TOOL_ADD_IMG_PAYLOAD,$(1),$(value $(_V)),$(2),$(ENC_BIN),$(3), \
 		$(ENC_BIN))
 else
-    $(call TOOL_ADD_IMG_PAYLOAD,$(1),$(value $(_V)),$(2),$(if $(wildcard $(value $(_V))),$(value $(_V)),FORCE),$(3))
+    $(call TOOL_ADD_IMG_PAYLOAD,$(1),$(value $(_V)),$(2),,$(3))
 endif
 
 .PHONY: check_$(1)
 check_$(1):
-	$(check_$(1)_cmd)
-endef
-
-# SELECT_OPENSSL_API_VERSION selects the OpenSSL API version to be used to
-# build the host tools by checking the version of OpenSSL located under
-# the path defined by the OPENSSL_DIR variable. It receives no parameters.
-define SELECT_OPENSSL_API_VERSION
-    # Set default value for USING_OPENSSL3 macro to 0
-    $(eval USING_OPENSSL3 = 0)
-    # Obtain the OpenSSL version for the build located under OPENSSL_DIR
-    $(eval OPENSSL_INFO := $(shell LD_LIBRARY_PATH=${OPENSSL_DIR}:${OPENSSL_DIR}/lib ${OPENSSL_BIN_PATH}/openssl version))
-    $(eval OPENSSL_CURRENT_VER = $(word 2, ${OPENSSL_INFO}))
-    $(eval OPENSSL_CURRENT_VER_MAJOR = $(firstword $(subst ., ,$(OPENSSL_CURRENT_VER))))
-    # If OpenSSL version is 3.x, then set USING_OPENSSL3 flag to 1
-    $(if $(filter 3,$(OPENSSL_CURRENT_VER_MAJOR)), $(eval USING_OPENSSL3 = 1))
+	$$(if $(value $(_V)),,$$(error "Platform '${PLAT}' requires $(_V). Please set $(_V) to point to the right file"))
+	$$(if $(wildcard $(value $(_V))),,$$(error '$(_V)=$(value $(_V))' was specified, but '$(value $(_V))' does not exist))
 endef
 
 ################################################################################
@@ -298,11 +240,10 @@ MAKE_DEP = -Wp,-MD,$(DEP) -MT $$@ -MP
 define MAKE_C_LIB
 $(eval OBJ := $(1)/$(patsubst %.c,%.o,$(notdir $(2))))
 $(eval DEP := $(patsubst %.o,%.d,$(OBJ)))
-$(eval LIB := $(call uppercase, $(notdir $(1))))
 
 $(OBJ): $(2) $(filter-out %.d,$(MAKEFILE_LIST)) | lib$(3)_dirs
 	$$(ECHO) "  CC      $$<"
-	$$(Q)$$(CC) $$($(LIB)_CFLAGS) $$(TF_CFLAGS) $$(CFLAGS) $(MAKE_DEP) -c $$< -o $$@
+	$$(Q)$$(CC) $$(TF_CFLAGS) $$(CFLAGS) $(MAKE_DEP) -c $$< -o $$@
 
 -include $(DEP)
 
@@ -328,18 +269,15 @@ endef
 # MAKE_C builds a C source file and generates the dependency file
 #   $(1) = output directory
 #   $(2) = source file (%.c)
-#   $(3) = BL stage
+#   $(3) = BL stage (1, 2, 2u, 31, 32)
 define MAKE_C
 
 $(eval OBJ := $(1)/$(patsubst %.c,%.o,$(notdir $(2))))
 $(eval DEP := $(patsubst %.o,%.d,$(OBJ)))
+$(eval BL_CPPFLAGS := $(BL$(call uppercase,$(3))_CPPFLAGS) -DIMAGE_BL$(call uppercase,$(3)))
+$(eval BL_CFLAGS := $(BL$(call uppercase,$(3))_CFLAGS))
 
-$(eval BL_DEFINES := IMAGE_$(call uppercase,$(3)) $($(call uppercase,$(3))_DEFINES) $(PLAT_BL_COMMON_DEFINES))
-$(eval BL_INCLUDE_DIRS := $($(call uppercase,$(3))_INCLUDE_DIRS) $(PLAT_BL_COMMON_INCLUDE_DIRS))
-$(eval BL_CPPFLAGS := $($(call uppercase,$(3))_CPPFLAGS) $(addprefix -D,$(BL_DEFINES)) $(addprefix -I,$(BL_INCLUDE_DIRS)) $(PLAT_BL_COMMON_CPPFLAGS))
-$(eval BL_CFLAGS := $($(call uppercase,$(3))_CFLAGS) $(PLAT_BL_COMMON_CFLAGS))
-
-$(OBJ): $(2) $(filter-out %.d,$(MAKEFILE_LIST)) | $(3)_dirs
+$(OBJ): $(2) $(filter-out %.d,$(MAKEFILE_LIST)) | bl$(3)_dirs
 	$$(ECHO) "  CC      $$<"
 	$$(Q)$$(CC) $$(LTO_CFLAGS) $$(TF_CFLAGS) $$(CFLAGS) $(BL_CPPFLAGS) $(BL_CFLAGS) $(MAKE_DEP) -c $$< -o $$@
 
@@ -351,18 +289,15 @@ endef
 # MAKE_S builds an assembly source file and generates the dependency file
 #   $(1) = output directory
 #   $(2) = assembly file (%.S)
-#   $(3) = BL stage
+#   $(3) = BL stage (1, 2, 2u, 31, 32)
 define MAKE_S
 
 $(eval OBJ := $(1)/$(patsubst %.S,%.o,$(notdir $(2))))
 $(eval DEP := $(patsubst %.o,%.d,$(OBJ)))
+$(eval BL_CPPFLAGS := $(BL$(call uppercase,$(3))_CPPFLAGS) -DIMAGE_BL$(call uppercase,$(3)))
+$(eval BL_ASFLAGS := $(BL$(call uppercase,$(3))_ASFLAGS))
 
-$(eval BL_DEFINES := IMAGE_$(call uppercase,$(3)) $($(call uppercase,$(3))_DEFINES) $(PLAT_BL_COMMON_DEFINES))
-$(eval BL_INCLUDE_DIRS := $($(call uppercase,$(3))_INCLUDE_DIRS) $(PLAT_BL_COMMON_INCLUDE_DIRS))
-$(eval BL_CPPFLAGS := $($(call uppercase,$(3))_CPPFLAGS) $(addprefix -D,$(BL_DEFINES)) $(addprefix -I,$(BL_INCLUDE_DIRS)) $(PLAT_BL_COMMON_CPPFLAGS))
-$(eval BL_ASFLAGS := $($(call uppercase,$(3))_ASFLAGS) $(PLAT_BL_COMMON_ASFLAGS))
-
-$(OBJ): $(2) $(filter-out %.d,$(MAKEFILE_LIST)) | $(3)_dirs
+$(OBJ): $(2) $(filter-out %.d,$(MAKEFILE_LIST)) | bl$(3)_dirs
 	$$(ECHO) "  AS      $$<"
 	$$(Q)$$(AS) $$(ASFLAGS) $(BL_CPPFLAGS) $(BL_ASFLAGS) $(MAKE_DEP) -c $$< -o $$@
 
@@ -374,16 +309,13 @@ endef
 # MAKE_LD generate the linker script using the C preprocessor
 #   $(1) = output linker script
 #   $(2) = input template
-#   $(3) = BL stage
+#   $(3) = BL stage (1, 2, 2u, 31, 32)
 define MAKE_LD
 
 $(eval DEP := $(1).d)
+$(eval BL_CPPFLAGS := $(BL$(call uppercase,$(3))_CPPFLAGS) -DIMAGE_BL$(call uppercase,$(3)))
 
-$(eval BL_DEFINES := IMAGE_$(call uppercase,$(3)) $($(call uppercase,$(3))_DEFINES) $(PLAT_BL_COMMON_DEFINES))
-$(eval BL_INCLUDE_DIRS := $($(call uppercase,$(3))_INCLUDE_DIRS) $(PLAT_BL_COMMON_INCLUDE_DIRS))
-$(eval BL_CPPFLAGS := $($(call uppercase,$(3))_CPPFLAGS) $(addprefix -D,$(BL_DEFINES)) $(addprefix -I,$(BL_INCLUDE_DIRS)) $(PLAT_BL_COMMON_CPPFLAGS))
-
-$(1): $(2) $(filter-out %.d,$(MAKEFILE_LIST)) | $(3)_dirs
+$(1): $(2) $(filter-out %.d,$(MAKEFILE_LIST)) | bl$(3)_dirs
 	$$(ECHO) "  PP      $$<"
 	$$(Q)$$(CPP) $$(CPPFLAGS) $(BL_CPPFLAGS) $(TF_CFLAGS_$(ARCH)) -P -x assembler-with-cpp -D__LINKER__ $(MAKE_DEP) -o $$@ $$<
 
@@ -411,7 +343,7 @@ endef
 # MAKE_OBJS builds both C and assembly source files
 #   $(1) = output directory
 #   $(2) = list of source files (both C and assembly)
-#   $(3) = BL stage
+#   $(3) = BL stage (1, 2, 2u, 31, 32)
 define MAKE_OBJS
         $(eval C_OBJS := $(filter %.c,$(2)))
         $(eval REMAIN := $(filter-out %.c,$(2)))
@@ -486,30 +418,21 @@ ${LIB_DIR}/lib$(1).a: $(OBJS)
 	$$(Q)$$(AR) cr $$@ $$?
 endef
 
-# Generate the path to one or more preprocessed linker scripts given the paths
-# of their sources.
-#
-# Arguments:
-#   $(1) = path to one or more linker script sources
-define linker_script_path
-        $(patsubst %.S,$(BUILD_DIR)/%,$(1))
-endef
-
 # MAKE_BL macro defines the targets and options to build each BL image.
 # Arguments:
-#   $(1) = BL stage
+#   $(1) = BL stage (1, 2, 2u, 31, 32)
 #   $(2) = FIP command line option (if empty, image will not be included in the FIP)
 #   $(3) = FIP prefix (optional) (if FWU_, target is fwu_fip instead of fip)
 #   $(4) = BL encryption flag (optional) (0, 1)
 define MAKE_BL
-        $(eval BUILD_DIR  := ${BUILD_PLAT}/$(1))
-		$(eval UNOPEN_BL_DIR  := ${UNOPEN_IMG_PATH}/atf/bl$(1))
-        $(eval BL_SOURCES := $($(call uppercase,$(1))_SOURCES))
-        $(eval SOURCES    := $(sort $(BL_SOURCES) $(BL_COMMON_SOURCES) $(PLAT_BL_COMMON_SOURCES)))
+        $(eval BUILD_DIR  := ${BUILD_PLAT}/bl$(1))
+        $(eval UNOPEN_BL_DIR  := ${UNOPEN_IMG_PATH}/atf/bl$(1))
+        $(eval BL_SOURCES := $(BL$(call uppercase,$(1))_SOURCES))
+        $(eval SOURCES    := $(BL_SOURCES) $(BL_COMMON_SOURCES) $(PLAT_BL_COMMON_SOURCES))
         $(eval OBJS       := $(addprefix $(BUILD_DIR)/,$(call SOURCES_TO_OBJS,$(SOURCES))))
-		$(eval REBUILD_SOURCES := $(BL$(call uppercase,$(1))_REBUILD_SOURCES))
+        $(eval REBUILD_SOURCES := $(BL$(call uppercase,$(1))_REBUILD_SOURCES))
         $(eval REBUILD_OBJS   := $(addprefix $(BUILD_DIR)/,$(call SOURCES_TO_OBJS,$(REBUILD_SOURCES))))
-        $(eval UNOPEN_SOURCES := $($(call uppercase,$(1))_UNOPEN_SOURCES))
+        $(eval UNOPEN_SOURCES := $(BL$(call uppercase,$(1))_UNOPEN_SOURCES))
         $(eval UNOPEN_OBJS   := $(addprefix $(BUILD_DIR)/,$(call SOURCES_TO_OBJS,$(UNOPEN_SOURCES))))
         $(eval BL_LINK_OBJS := $(filter-out $(REBUILD_OBJS) $(UNOPEN_OBJS), $(OBJS)))
         $(eval LINKERFILE := $(call IMG_LINKERFILE,$(1)))
@@ -519,17 +442,10 @@ define MAKE_BL
         $(eval BIN        := $(call IMG_BIN,$(1)))
         $(eval ENC_BIN    := $(call IMG_ENC_BIN,$(1)))
         $(eval BL_LINKERFILE := $(BL$(call uppercase,$(1))_LINKERFILE))
-		$(eval BL_LIBS    := $($(call uppercase,$(1))_LIBS))
-
-        $(eval DEFAULT_LINKER_SCRIPT_SOURCE := $($(call uppercase,$(1))_DEFAULT_LINKER_SCRIPT_SOURCE))
-        $(eval DEFAULT_LINKER_SCRIPT := $(call linker_script_path,$(DEFAULT_LINKER_SCRIPT_SOURCE)))
-
-        $(eval LINKER_SCRIPT_SOURCES := $($(call uppercase,$(1))_LINKER_SCRIPT_SOURCES))
-        $(eval LINKER_SCRIPTS := $(call linker_script_path,$(LINKER_SCRIPT_SOURCES)))
-
+        $(eval BL_LIBS    := $(BL$(call uppercase,$(1))_LIBS))
         # We use sort only to get a list of unique object directory names.
         # ordering is not relevant but sort removes duplicates.
-        $(eval TEMP_OBJ_DIRS := $(sort $(dir ${OBJS} ${DEFAULT_LINKER_SCRIPT} ${LINKER_SCRIPTS})))
+        $(eval TEMP_OBJ_DIRS := $(sort $(dir ${OBJS} ${LINKERFILE})))
         # The $(dir ) function leaves a trailing / on the directory names
         # Rip off the / to match directory names with make rule targets.
         $(eval OBJ_DIRS   := $(patsubst %/,%,$(TEMP_OBJ_DIRS)))
@@ -538,172 +454,117 @@ define MAKE_BL
 
 $(eval $(call MAKE_PREREQ_DIR,${BUILD_DIR},${BUILD_PLAT}))
 
-$(eval $(foreach objd,${OBJ_DIRS},
-        $(call MAKE_PREREQ_DIR,${objd},${BUILD_DIR})))
+$(eval $(foreach objd,${OBJ_DIRS},$(call MAKE_PREREQ_DIR,${objd},${BUILD_DIR})))
 
-.PHONY : ${1}_dirs
+.PHONY : bl${1}_dirs
 
 # We use order-only prerequisites to ensure that directories are created,
 # but do not cause re-builds every time a file is written.
-${1}_dirs: | ${OBJ_DIRS}
+bl${1}_dirs: | ${OBJ_DIRS}
 
 $(eval $(call MAKE_OBJS,$(BUILD_DIR),$(SOURCES),$(1)))
-
-# Generate targets to preprocess each required linker script
-$(eval $(foreach source,$(DEFAULT_LINKER_SCRIPT_SOURCE) $(LINKER_SCRIPT_SOURCES), \
-        $(call MAKE_LD,$(call linker_script_path,$(source)),$(source),$(1))))
-
-$(eval BL_LDFLAGS := $($(call uppercase,$(1))_LDFLAGS))
+$(eval $(call MAKE_LD,$(LINKERFILE),$(BL_LINKERFILE),$(1)))
+$(eval BL_LDFLAGS := $(BL$(call uppercase,$(1))_LDFLAGS))
 
 ifeq ($(USE_ROMLIB),1)
 $(ELF): romlib.bin
 endif
 
-# MODULE_OBJS can be assigned by vendors with different compiled
-# object file path, and prebuilt object file path.
-$(eval OBJS += $(MODULE_OBJS))
-
 ifdef CONFIG_ECNT
 ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
-$(ELF): $(OBJS) $(DEFAULT_LINKER_SCRIPT) $(LINKER_SCRIPTS) | $(1)_dirs libraries $(BL_LIBS)
+ifneq ($(TCSUPPORT_ATF_RELEASE),)
+$(ELF): $(OBJS) $(LINKERFILE) | bl$(1)_dirs libraries $(BL_LIBS)
 else
-$(ELF): $(OBJS) $(DEFAULT_LINKER_SCRIPT) $(LINKER_SCRIPTS) | $(1)_dirs libraries $(BL_LIBS)
+$(ELF): $(REBUILD_OBJS) | bl$(1)_dirs
+endif
+else
+$(ELF): $(OBJS) $(LINKERFILE) | bl$(1)_dirs libraries $(BL_LIBS)
 endif
 ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
+ifneq ($(TCSUPPORT_ATF_RELEASE),)
 ifeq ($(IMAGE_BL22),1)
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/efuse* $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/Hal_io.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/DDR3_dram_init.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/DDR4_dram_init.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/IPM_actiming_setting_DDR3.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/IPM_actiming_setting_DDR4.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/RX_path_auto_gen.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/TX_path_auto_gen.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/TX_RX_auto_gen_library.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc_actiming.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/MD32_initial.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc_dv_dut.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc_utility.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/DIG_NONSHUF_config.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/DIG_SHUF_config.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/DRAMC_SUBSYS_config.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/HW_FUNC_MANAGE.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/ANA_init_config.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc_pi_basic_api.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc_pi_calibration_api.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc_dvfs.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc_pi_main.o $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc.o $(BUILD_DIR)/ ;
-
-	-cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramc_selfrefresh_api.o $(BUILD_DIR)/ ;
-	-cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/dramtest.o $(BUILD_DIR)/ ;
-	-cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/ecnt_avs.o $(BUILD_DIR)/ ;
+	cp -rf $(UNOPEN_IMG_PATH)/atf/bl22/* $(BUILD_DIR)/ ;
 endif
 ifeq ($(IMAGE_BL23),1)
 	cp -rf $(UNOPEN_IMG_PATH)/atf/bl23/efuse* $(BUILD_DIR)/ ;
-	cp -rf $(UNOPEN_IMG_PATH)/atf/bl23/ecnt_npu_img.o $(BUILD_DIR)/ ;
+	cp -rf $(UNOPEN_IMG_PATH)/atf/bl23/ecnt* $(BUILD_DIR)/ ;
 endif
 	if [ "$$(basename $$(notdir $$@))" = "bl31" ] ; then \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/efuse* $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/Hal_io.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/DDR3_dram_init.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/DDR4_dram_init.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/IPM_actiming_setting_DDR3.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/IPM_actiming_setting_DDR4.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/RX_path_auto_gen.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/TX_path_auto_gen.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/TX_RX_auto_gen_library.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc_actiming.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/MD32_initial.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc_dv_dut.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc_utility.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/DIG_NONSHUF_config.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/DIG_SHUF_config.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/DRAMC_SUBSYS_config.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/HW_FUNC_MANAGE.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/ANA_init_config.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc_pi_basic_api.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc_pi_calibration_api.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc_dvfs.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc_pi_main.o $(BUILD_DIR)/ ; \
-		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc.o $(BUILD_DIR)/ ; \
-		if [ -f $(UNOPEN_IMG_PATH)/atf/bl31/dramc_selfrefresh_api.o ] ; then \
-			cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/dramc_selfrefresh_api.o $(BUILD_DIR)/ ; \
-		fi \
+		cp -rf $(UNOPEN_IMG_PATH)/atf/bl31/* $(BUILD_DIR)/ ; \
 	fi
+else
+	$$(Q)cp -rf $(UNOPEN_BL_DIR)/* $(BUILD_DIR)/
+endif
 endif
 else
-$(ELF): $(OBJS) $(DEFAULT_LINKER_SCRIPT) $(LINKER_SCRIPTS) | $(1)_dirs libraries $(BL_LIBS)
+$(ELF): $(OBJS) $(LINKERFILE) | bl$(1)_dirs libraries $(BL_LIBS)
 endif
-
 	$$(ECHO) "  LD      $$@"
 ifdef MAKE_BUILD_STRINGS
-	$(call MAKE_BUILD_STRINGS,$(BUILD_DIR)/build_message.o)
+	$(call MAKE_BUILD_STRINGS, $(BUILD_DIR)/build_message.o)
 else
 	@echo 'const char build_message[] = "Built : "$(BUILD_MESSAGE_TIMESTAMP); \
-	       const char version_string[] = "${VERSION_STRING}"; \
-	       const char version[] = "${VERSION}";' | \
+	       const char version_string[] = "${VERSION_STRING}";' | \
 		$$(CC) $$(TF_CFLAGS) $$(CFLAGS) -xc -c - -o $(BUILD_DIR)/build_message.o
 endif
 ifneq ($(findstring armlink,$(notdir $(LD))),)
-	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) --entry=${1}_entrypoint \
+	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) --entry=bl${1}_entrypoint \
 		--predefine="-D__LINKER__=$(__LINKER__)" \
 		--predefine="-DTF_CFLAGS=$(TF_CFLAGS)" \
-		--map --list="$(MAPFILE)" --scatter=${PLAT_DIR}/scat/${1}.scat \
+		--map --list="$(MAPFILE)" --scatter=${PLAT_DIR}/scat/bl${1}.scat \
 		$(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) \
-		$(BUILD_DIR)/build_message.o $(sort $(OBJS))
+		$(BUILD_DIR)/build_message.o $(OBJS)
 else ifneq ($(findstring gcc,$(notdir $(LD))),)
 	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) -Wl,-Map=$(MAPFILE) \
-		$(addprefix -Wl$(comma)--script$(comma),$(LINKER_SCRIPTS)) -Wl,--script,$(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+		-Wl,-T$(LINKERFILE) $(BUILD_DIR)/build_message.o \
+		$(OBJS) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
 else
 ifdef CONFIG_ECNT
 ifneq ($(TCSUPPORT_BL2_OPTIMIZATION),)
 ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
+ifneq ($(TCSUPPORT_ATF_RELEASE),)
 	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS) $(UNOPEN_OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) 
+		--script $(LINKERFILE) $(BUILD_DIR)/build_message.o \
+		$(OBJS) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) $(UNOPEN_OBJS)
 else
 	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+		--script $(LINKERFILE) $(BUILD_DIR)/build_message.o \
+		$(OBJS) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+endif
+else
+	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
+		--script $(LINKERFILE) $(BUILD_DIR)/build_message.o \
+		$(OBJS) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
 endif
 else
 ifneq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
 	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
 		--script $(LINKERFILE) $(BUILD_DIR)/build_message.o \
-		$(sort $(REBUILD_OBJS) $(UNOPEN_OBJS)) -L$(BUILD_DIR) -lbl2 -lmbedtls -lc
+		$(REBUILD_OBJS) $(UNOPEN_OBJS) -L$(BUILD_DIR) -lbl2 -lmbedtls -lc
 else
 	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
 		--script $(LINKERFILE) $(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+		$(OBJS) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
 
 	if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
 		$$(AR) rcs $(BUILD_DIR)/libbl2.a $(BL_LINK_OBJS) ; \
 		$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
 			--script $(LINKERFILE) $(BUILD_DIR)/build_message.o \
-			$(sort $(REBUILD_OBJS) $(UNOPEN_OBJS)) -L$(BUILD_DIR) -lbl2 $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) ; \
+			$(REBUILD_OBJS) $(UNOPEN_OBJS) -L$(BUILD_DIR) -lbl2 $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS) ; \
 	fi
 endif
 endif
 else
 	$$(Q)$$(LD) -o $$@ $$(TF_LDFLAGS) $$(LDFLAGS) $(BL_LDFLAGS) -Map=$(MAPFILE) \
-		$(addprefix -T ,$(LINKER_SCRIPTS)) --script $(DEFAULT_LINKER_SCRIPT) \
-		$(BUILD_DIR)/build_message.o \
-		$(sort $(OBJS)) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
+		--script $(LINKERFILE) $(BUILD_DIR)/build_message.o \
+		$(OBJS) $(LDPATHS) $(LIBWRAPPER) $(LDLIBS) $(BL_LIBS)
 endif
 endif
-
 ifeq ($(DISABLE_BIN_GENERATION),1)
 	@${ECHO_BLANK_LINE}
 	@echo "Built $$@ successfully"
 	@${ECHO_BLANK_LINE}
 endif
-
-$(POST_BIN): 
 
 $(DUMP): $(ELF)
 	$${ECHO} "  OD      $$@"
@@ -713,32 +574,27 @@ $(BIN): $(ELF)
 	$${ECHO} "  BIN     $$@"
 	$$(Q)$$(OC) -O binary $$< $$@
 	@${ECHO_BLANK_LINE}
-	@echo "Built $$@ successfully "
-	@echo "unopen at--> $(UNOPEN_IMG_PATH)"
+	@echo "Built $$@ successfully"
 	@${ECHO_BLANK_LINE}
+ifdef CONFIG_ECNT
+	$$(Q)if test ! -d $(UNOPEN_IMG_PATH)/atf/; \
+		then mkdir -p $(UNOPEN_IMG_PATH)/atf/; \
+		fi
 
-	$(Q)if test ! -d $(UNOPEN_IMG_PATH)/atf/; \
-	then echo "aaa"; \
-	fi
-
-	$(Q)if test ! -d $(UNOPEN_IMG_PATH)/atf/; \
-	then mkdir -p $(UNOPEN_IMG_PATH)/atf/; \
-	fi
+ifdef TCSUPPORT_BL2_OPTIMIZATION
+ifeq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
 ifeq ($(IMAGE_BL22),1)
 	$$(Q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
 	$(TOOLS_DIR)/lzma e $$@ bl22.lzma ; \
 	cp bl22.lzma $(UNOPEN_IMG_PATH)/atf/ ; \
 	fi	
 endif
-
 ifeq ($(IMAGE_BL23),1)
-
 	$$(Q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
 	$(TOOLS_DIR)/lzma e $$@ bl23.lzma ; \
 	cp bl23.lzma $(UNOPEN_IMG_PATH)/atf/ ; \
 	fi	
 endif
-
 ifeq ($(IMAGE_BL21),1)
 	$$(Q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
 	cp $$@ bl21.bin ; \
@@ -746,47 +602,122 @@ ifeq ($(IMAGE_BL21),1)
 	cp bl21.bin $(UNOPEN_IMG_PATH)/atf/ ; \
 	fi
 endif
-
-
+else
+ifneq ($(TCSUPPORT_ATF_RELEASE),)
+ifeq ($(IMAGE_BL22),1)
+	$$(Q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+	$(TOOLS_DIR)/lzma e $$@ bl22.lzma ; \
+	cp bl22.lzma $(UNOPEN_IMG_PATH)/atf/ ; \
+	fi	
+endif
+ifeq ($(IMAGE_BL23),1)
+	$$(Q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+	$(TOOLS_DIR)/lzma e $$@ bl23.lzma ; \
+	cp bl23.lzma $(UNOPEN_IMG_PATH)/atf/ ; \
+	fi	
+endif
+ifeq ($(IMAGE_BL21),1)
+	$$(Q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+	cp $$@ bl21.bin ; \
+	dd if=/dev/null of=bl21.bin bs=1 count=0 seek=14336 ; \
+	cp bl21.bin $(UNOPEN_IMG_PATH)/atf/ ; \
+	fi
+endif
+endif
+endif
+endif
 	$$(Q)cp $$@ $(UNOPEN_IMG_PATH)/atf/
 
-ifeq ($(IMAGE_BL23),1)
-	if test ! -d $(UNOPEN_IMG_PATH)/atf/bl23; then \
-		mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl23; \
+ifeq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
+ifeq ($(IMAGE_BL21),1)
+	if test ! -d $(UNOPEN_IMG_PATH)/atf/bl21; then \
+		mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl21; \
 	fi
-	cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl23/ ;
+	cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl21/ ;
 endif
-
 ifeq ($(IMAGE_BL22),1)
 	if test ! -d $(UNOPEN_IMG_PATH)/atf/bl22; then \
 		mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl22; \
 	fi
 	cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl22/ ;
 endif
-
+ifeq ($(IMAGE_BL23),1)
+	if test ! -d $(UNOPEN_IMG_PATH)/atf/bl23; then \
+		mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl23; \
+	fi
+	cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl23/ ;
+endif
 	if [ "$$(basename $$(notdir $$@))" = "bl31" ] ; then \
 		if test ! -d $(UNOPEN_IMG_PATH)/atf/bl31; then \
 			mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl31; \
 		fi ;\
 		cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl31/ ; \
 	fi
-
-
-.PHONY: $(1)
-ifeq ($(DISABLE_BIN_GENERATION),1)
-$(1): $(ELF) $(DUMP)
 else
-$(1): $(BIN) $(DUMP)
+ifneq ($(TCSUPPORT_ATF_RELEASE),)
+ifeq ($(IMAGE_BL21),1)
+	if test ! -d $(UNOPEN_IMG_PATH)/atf/bl21; then \
+		mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl21; \
+	fi
+	cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl21/ ;
+endif
+ifeq ($(IMAGE_BL22),1)
+	if test ! -d $(UNOPEN_IMG_PATH)/atf/bl22; then \
+		mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl22; \
+	fi
+	cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl22/ ;
+endif
+ifeq ($(IMAGE_BL23),1)
+	if test ! -d $(UNOPEN_IMG_PATH)/atf/bl23; then \
+		mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl23; \
+	fi
+	cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl23/ ;
+endif
+	if [ "$$(basename $$(notdir $$@))" = "bl31" ] ; then \
+		if test ! -d $(UNOPEN_IMG_PATH)/atf/bl31; then \
+			mkdir -pv $(UNOPEN_IMG_PATH)/atf/bl31; \
+		fi ;\
+		cp $(LINKERFILE) $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_IMG_PATH)/atf/bl31/ ; \
+	fi
+endif
 endif
 
-all: $(1)
+ifndef TCSUPPORT_BL2_OPTIMIZATION
+ifeq ($(TCSUPPORT_BB_FIX_UNOPEN),0)
+	$$(Q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+		if test ! -d $(UNOPEN_BL_DIR); then \
+			mkdir -pv $(UNOPEN_BL_DIR); \
+		fi ;\
+		cp $(LINKERFILE) $(BUILD_DIR)/libbl2.a $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_BL_DIR)/ ; \
+	fi
+else
+ifneq ($(TCSUPPORT_ATF_RELEASE),)
+	$$(Q)if [ "$$(basename $$(notdir $$@))" = "bl2" ] ; then \
+		if test ! -d $(UNOPEN_BL_DIR); then \
+			mkdir -pv $(UNOPEN_BL_DIR); \
+		fi ;\
+		cp $(LINKERFILE) $(BUILD_DIR)/libbl2.a $(LIB_DIR)/*.a $(UNOPEN_OBJS) $(UNOPEN_BL_DIR)/ ; \
+	fi
+endif
+endif
+endif
+endif
+
+.PHONY: bl$(1)
+ifeq ($(DISABLE_BIN_GENERATION),1)
+bl$(1): $(ELF) $(DUMP)
+else
+bl$(1): $(BIN) $(DUMP)
+endif
+
+all: bl$(1)
 
 ifeq ($(4),1)
 $(call ENCRYPT_FW,$(BIN),$(ENC_BIN))
-$(if $(2),$(call TOOL_ADD_IMG_PAYLOAD,$(1),$(BIN),--$(2),$(ENC_BIN),$(3), \
+$(if $(2),$(call TOOL_ADD_IMG_PAYLOAD,bl$(1),$(BIN),--$(2),$(ENC_BIN),$(3), \
 		$(ENC_BIN)))
 else
-$(if $(2),$(call TOOL_ADD_IMG_PAYLOAD,$(1),$(BIN),--$(2),$(BIN),$(3)))
+$(if $(2),$(call TOOL_ADD_IMG_PAYLOAD,bl$(1),$(BIN),--$(2),$(BIN),$(3)))
 endif
 
 endef

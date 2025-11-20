@@ -120,7 +120,7 @@ func platform_mem_init
 	ldr		r3, [r1]
 	bic		r3, r3, #3840
 	bic		r3, r3, #1
-	#if defined(TCSUPPORT_CPU_EN7581) && !defined(TCSUPPORT_CPU_AN7583) /* for 256k_sram_256k_l2c config */
+	#if defined(TCSUPPORT_CPU_EN7581) /* for 256k_sram_256k_l2c config */
 	orr		r3, r3, #256
 	#endif
 	orr		r3, r3, #1

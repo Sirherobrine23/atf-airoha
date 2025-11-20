@@ -88,15 +88,8 @@ uint64_t ecnt_efuse_handler(uint32_t r1, uint32_t r2, uint32_t r3);
 uint64_t ecnt_test_handler(uint32_t r1, uint32_t r2, uint32_t r3);
 uint64_t ecnt_verify_handler(uint32_t id, uint32_t r1, uint32_t r2, uint32_t r3);
 uint64_t ecnt_decrypt_handler(uint32_t id, uint32_t r1, uint32_t r2, uint32_t r3);
-uint64_t ecnt_password_verify_handler(uint32_t r1, uint32_t r2, uint32_t r3);
-uint64_t ecnt_decrypt_dm_key_handler(uint32_t r1, uint32_t r2, uint32_t r3);
 
 uint64_t ecnt_avs_handler(uint32_t r1, uint32_t r2, uint32_t r3);
-uint64_t ecnt_sref_handler(uint32_t r1);
-uint64_t phy_efuse_handler(uint32_t r1);
-uint64_t DDR_TX_DLY_handler(uint32_t r1, uint32_t r2);
-uint64_t DDR_RX_DLY_handler(uint32_t r1, uint32_t r2);
-
 
 extern struct atf_arg_t gteearg;
 #endif /* ECNT_PLAT_COMMON_H */

@@ -23,34 +23,6 @@
 #include <mtk-sd.h>
 #include <drivers/mmc.h>
 
-#define RG_I2C0_SDA_PU		(0x1FA20044)
-#define RG_GPIO_L_PU		(0x1FA2004C)
-
-/* Need to check index in GPIO table for each CPU */
-#if defined(TCSUPPORT_CPU_AN7583)
-#define EMMC_CMD			(1<<13)
-
-#define EMMC_DATA0			(1<<5)
-#define EMMC_DATA1			(1<<6)
-#define EMMC_DATA2			(1<<7)
-#define EMMC_DATA3			(1<<20)
-#define EMMC_DATA4			(1<<21)
-#define EMMC_DATA5			(1<<22)
-#define EMMC_DATA6			(1<<23)
-#define EMMC_DATA7			(1<<24)
-#else /* TCSUPPORT_CPU_AN7581 */
-#define EMMC_CMD			(1<<13)
-
-#define EMMC_DATA0			(1<<17)
-#define EMMC_DATA1			(1<<18)
-#define EMMC_DATA2			(1<<19)
-#define EMMC_DATA3			(1<<20)
-#define EMMC_DATA4			(1<<21)
-#define EMMC_DATA5			(1<<22)
-#define EMMC_DATA6			(1<<23)
-#define EMMC_DATA7			(1<<24)
-#endif
-
 __attribute__((aligned(MMC_BLOCK_SIZE))) static uint8_t emmc_blk_buf[MMC_BLOCK_SIZE];
 
 extern uint8_t support_emmc_feature (void);
@@ -60,7 +32,6 @@ extern int nandflash_init(int rom_base);
 extern int nandflash_read(unsigned long from, unsigned long len, u32 *retlen, unsigned char *buf, SPI_NAND_FLASH_RTN_T *status);
 extern int nandflash_write(unsigned long to, unsigned long len, u32 *retlen, unsigned char *buf);
 extern int nandflash_erase(unsigned long offset, unsigned long len);
-extern uint32_t uartDisable;
 
 static hw_trap_t *hwtrap;
 
@@ -97,14 +68,14 @@ static void dram_dump(unsigned char *buf, int len)
 FLASH_INIT_T flash_init(hw_trap_t *hw_trap)
 {
 	hwtrap = hw_trap;
-#if defined (TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined (TCSUPPORT_CPU_AN7552)
+#if defined (TCSUPPORT_CPU_EN7581) || defined (TCSUPPORT_CPU_AN7552)
 	if (hwtrap->is_spi_nand_device_ecc ||
 		hwtrap->is_spi_nand_ctrl_ecc ||
 		hwtrap->is_parallel_nand) {
 		if (nandflash_init(0) != 0) {
 			return FLASH_INIT_FAIL;
 		}
-	}
+	} 
 #else
 	if (IS_NANDFLASH) {
  		if (nandflash_init(0) != 0) {
@@ -115,16 +86,12 @@ FLASH_INIT_T flash_init(hw_trap_t *hw_trap)
 
 
 #ifdef TCSUPPORT_EMMC
-	else if (hwtrap->is_emmc) {
+	else if(hwtrap->is_emmc) {
 		/* 7581CT and 7581DT does not support emmc */
 		if (support_emmc_feature() == 0){
 			ERROR("Unsupport emmc. emmc init fail.\n");
 			return FLASH_INIT_FAIL;
 		}
-
-		/* The eMMC data pin and cmd pin should enable internal PU before mmc init. */
-		mmio_write_32(RG_I2C0_SDA_PU, (mmio_read_32(RG_I2C0_SDA_PU) | EMMC_CMD));
-		mmio_write_32(RG_GPIO_L_PU, (mmio_read_32(RG_GPIO_L_PU) | (EMMC_DATA0) | (EMMC_DATA1) | (EMMC_DATA2) | (EMMC_DATA3) | (EMMC_DATA4) | (EMMC_DATA5) | (EMMC_DATA6) | (EMMC_DATA7)));
 
 		if (mtk_mmc_init() != 0) {
 			ERROR("emmc init fail.\n");
@@ -144,13 +111,11 @@ FLASH_READ_STATUS_T flash_read(uint32_t from, uint32_t len, uint8_t *p_buf)
 	uint32_t retlen = 0;
 	SPI_NAND_FLASH_RTN_T status = SPI_NAND_FLASH_RTN_NO_ERROR;
 	int read_status = 0;
-#if defined (TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined (TCSUPPORT_CPU_AN7552)
+#if defined (TCSUPPORT_CPU_EN7581) || defined (TCSUPPORT_CPU_AN7552)
 	if (hwtrap->is_spi_nand_device_ecc ||
 		hwtrap->is_spi_nand_ctrl_ecc ||
 		hwtrap->is_parallel_nand) {
-		if(!uartDisable){
 		NOTICE("2-5-1\n");
-		}
 		read_status = nandflash_read(from, len, &retlen, p_buf, &status);
 
 		if(read_status != 0)
@@ -262,7 +227,7 @@ int flash_erase(uint32_t addr, uint32_t size)
 	uint32_t retlen = 0;
 #endif
 
-#if defined (TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined (TCSUPPORT_CPU_AN7552)
+#if defined (TCSUPPORT_CPU_EN7581) || defined (TCSUPPORT_CPU_AN7552)
 	if (hwtrap->is_spi_nand_device_ecc ||
 		hwtrap->is_spi_nand_ctrl_ecc ||
 		hwtrap->is_parallel_nand) {
@@ -301,7 +266,7 @@ int flash_write(uint32_t to, uint32_t len, uint8_t *p_buf)
 	int lba = 0;
 #endif
 
-#if defined (TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined (TCSUPPORT_CPU_AN7552)
+#if defined (TCSUPPORT_CPU_EN7581) || defined (TCSUPPORT_CPU_AN7552)
 	if (hwtrap->is_spi_nand_device_ecc ||
 		hwtrap->is_spi_nand_ctrl_ecc ||
 		hwtrap->is_parallel_nand) {

@@ -36,7 +36,7 @@
 typedef struct {
 	unsigned int file_pos;
 	fip_toc_entry_t entry;
-} fip_file_state_t;
+} file_state_t;
 
 /*
  * Maintain dev_spec per FIP Device
@@ -49,6 +49,7 @@ typedef struct {
 	uint16_t plat_toc_flag;
 } fip_dev_state_t;
 
+static const uuid_t uuid_null;
 /*
  * Only one file can be open across all FIP device
  * as backends like io_memmap don't support
@@ -56,7 +57,7 @@ typedef struct {
  * backend handle should be maintained per FIP device
  * if the same support is available in the backend
  */
-static fip_file_state_t current_fip_file = {0};
+static file_state_t current_file = {0};
 static uintptr_t backend_dev_handle;
 static uintptr_t backend_image_spec;
 
@@ -287,7 +288,6 @@ static int fip_file_open(io_dev_info_t *dev_info, const uintptr_t spec,
 	int result;
 	uintptr_t backend_handle;
 	const io_uuid_spec_t *uuid_spec = (io_uuid_spec_t *)spec;
-	static const uuid_t uuid_null = { {0} }; /* Double braces for clang */
 	size_t bytes_read;
 	int found_file = 0;
 
@@ -300,9 +300,9 @@ static int fip_file_open(io_dev_info_t *dev_info, const uintptr_t spec,
 	 * When the system supports dynamic memory allocation we can allow more
 	 * than one open file at a time if needed.
 	 */
-	if (current_fip_file.entry.offset_address != 0U) {
+	if (current_file.entry.offset_address != 0) {
 		WARN("fip_file_open : Only one open file at a time.\n");
-		return -ENFILE;
+		return -ENOMEM;
 	}
 
 	/* Attempt to access the FIP image */
@@ -326,32 +326,31 @@ static int fip_file_open(io_dev_info_t *dev_info, const uintptr_t spec,
 	found_file = 0;
 	do {
 		result = io_read(backend_handle,
-				 (uintptr_t)&current_fip_file.entry,
-				 sizeof(current_fip_file.entry),
+				 (uintptr_t)&current_file.entry,
+				 sizeof(current_file.entry),
 				 &bytes_read);
 		if (result == 0) {
-			if (compare_uuids(&current_fip_file.entry.uuid,
+			if (compare_uuids(&current_file.entry.uuid,
 					  &uuid_spec->uuid) == 0) {
 				found_file = 1;
+				break;
 			}
 		} else {
 			WARN("Failed to read FIP (%i)\n", result);
 			goto fip_file_open_close;
 		}
-	} while ((found_file == 0) &&
-			(compare_uuids(&current_fip_file.entry.uuid,
-				&uuid_null) != 0));
+	} while (compare_uuids(&current_file.entry.uuid, &uuid_null) != 0);
 
 	if (found_file == 1) {
 		/* All fine. Update entity info with file state and return. Set
-		 * the file position to 0. The 'current_fip_file.entry' holds
-		 * the base and size of the file.
+		 * the file position to 0. The 'current_file.entry' holds the
+		 * base and size of the file.
 		 */
-		current_fip_file.file_pos = 0;
-		entity->info = (uintptr_t)&current_fip_file;
+		current_file.file_pos = 0;
+		entity->info = (uintptr_t)&current_file;
 	} else {
 		/* Did not find the file in the FIP. */
-		current_fip_file.entry.offset_address = 0;
+		current_file.entry.offset_address = 0;
 		result = -ENOENT;
 	}
 
@@ -369,7 +368,7 @@ static int fip_file_len(io_entity_t *entity, size_t *length)
 	assert(entity != NULL);
 	assert(length != NULL);
 
-	*length =  ((fip_file_state_t *)entity->info)->entry.size;
+	*length =  ((file_state_t *)entity->info)->entry.size;
 
 	return 0;
 }
@@ -380,7 +379,7 @@ static int fip_file_read(io_entity_t *entity, uintptr_t buffer, size_t length,
 			  size_t *length_read)
 {
 	int result;
-	fip_file_state_t *fp;
+	file_state_t *fp;
 	size_t file_offset;
 	size_t bytes_read;
 	uintptr_t backend_handle;
@@ -398,7 +397,7 @@ static int fip_file_read(io_entity_t *entity, uintptr_t buffer, size_t length,
 		goto fip_file_read_exit;
 	}
 
-	fp = (fip_file_state_t *)entity->info;
+	fp = (file_state_t *)entity->info;
 
 	/* Seek to the position in the FIP where the payload lives */
 	file_offset = fp->entry.offset_address + fp->file_pos;
@@ -437,8 +436,8 @@ static int fip_file_close(io_entity_t *entity)
 	/* Clear our current file pointer.
 	 * If we had malloc() we would free() here.
 	 */
-	if (current_fip_file.entry.offset_address != 0U) {
-		zeromem(&current_fip_file, sizeof(current_fip_file));
+	if (current_file.entry.offset_address != 0) {
+		zeromem(&current_file, sizeof(current_file));
 	}
 
 	/* Clear the Entity info. */
@@ -480,8 +479,7 @@ int fip_dev_get_plat_toc_flag(io_dev_info_t *dev_info, uint16_t *plat_toc_flag)
 	return 0;
 }
 
-
-#if(1)
+#if defined(CONFIG_ECNT)
 int fip_file_enc(uintptr_t local_image_handle)
 {
 	io_entity_t *entity = (io_entity_t *) local_image_handle;
@@ -496,6 +494,6 @@ int fip_file_enc(uintptr_t local_image_handle)
 		return -EINVAL;
 	}
 
-	return (((fip_file_state_t *) entity->info)->entry.flags & FW_ENCRYPTION);
+	return (((file_state_t *) entity->info)->entry.flags & FW_ENCRYPTION);
 }
 #endif

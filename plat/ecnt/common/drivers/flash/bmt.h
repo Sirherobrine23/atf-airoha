@@ -7,14 +7,8 @@
 #if !defined(IMAGE_BL2)
 #define bool     u8
 #endif
-
-#ifndef true
 #define true     1
-#endif
-
-#ifndef false
 #define false    0
-#endif
 
 #define MAX_RAW_BAD_BLOCK_SIZE  (250)
 

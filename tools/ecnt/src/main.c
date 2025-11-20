@@ -22,8 +22,6 @@
 #define KEY_STRING_SIZE_256	64
 #define KEY_STRING_SIZE_128	32
 
-#define ENV_CRC_VALUE_LENGTH	4
-
 extern const char build_msg[];
 extern const char platform_msg[];
 
@@ -143,15 +141,7 @@ static const cmd_opt_t common_cmd_opt[] = {
 		"AES key."
 	},
 	{
-		{ "2nd_key", required_argument, NULL, 'K' },
-		"AES key."
-	},
-	{
 		{ "rotpk", required_argument, NULL, 'r' },
-		"Root Of Trust key filename."
-	},
-	{
-		{ "2nd_rotpk", required_argument, NULL, 'R' },
 		"Root Of Trust key filename."
 	},
 	{
@@ -166,11 +156,6 @@ int check_argument(int enc_alg, int hash_alg, char *key, char *rotpk)
 	int key_string_len = 0;
 	int key_len = 0, rotpk_len = 0;
 
-	if(!key || !rotpk)
-	{
-		printf("*** Does not input the key, skip parsing key***\n");
-		return 0;
-	}
 	if (enc_alg != ENC_ALG_NONE)
 	{
 		key_string_len = strlen(key);
@@ -200,7 +185,7 @@ int check_argument(int enc_alg, int hash_alg, char *key, char *rotpk)
 	return 0;
 }
 
-int efuse_create(int enc_alg, int hash_alg, char *key, char *rotpk, char *key_2nd, char *rotpk_2nd)
+int efuse_create(int enc_alg, int hash_alg, char *key, char *rotpk)
 {
 	FILE *ip_file = NULL;
 	int i = 0, j = 0, byte = 0;
@@ -231,7 +216,7 @@ int efuse_create(int enc_alg, int hash_alg, char *key, char *rotpk, char *key_2n
 			key_len = KEY_SIZE_256;
 		}
 #endif
-		printf("aes key:\n");
+
 		for (i = 0, j = 0; i < key_len; i++, j += 2)
 		{
 			if (sscanf(&key[j], "%02hhx", &aes_key[i]) != 1)
@@ -243,25 +228,6 @@ int efuse_create(int enc_alg, int hash_alg, char *key, char *rotpk, char *key_2n
 		}
 		printf("\n");
 		memcpy(secure_data.ssk, aes_key, key_len);
-
-#if defined(TCSUPPORT_CPU_AN7583)
-		if((key_2nd != NULL))
-		{
-			printf("2nd aes key:\n");
-			for (i = 0, j = 0; i < key_len; i++, j += 2)
-			{
-				if (sscanf(&key_2nd[j], "%02hhx", &aes_key[i]) != 1)
-				{
-					ERROR("Incorrect key format\n");
-					return -1;
-				}
-				printf("%x ", aes_key[i]);
-			}
-			printf("\n");
-			memcpy(secure_data.ssk_dual, aes_key, key_len);
-		}
-#endif
-
 	}
 
 	ip_file = fopen(rotpk, "rb");
@@ -279,41 +245,14 @@ int efuse_create(int enc_alg, int hash_alg, char *key, char *rotpk, char *key_2n
 		return -1;
 	}
 	memcpy(secure_data.rotpk, hash_sha, rotpk_len);
-	printf("Root of trusted public key hashed value:\n");
 
 	for (i = 0; i < rotpk_len; i++)
 	{
 		printf("%x ", hash_sha[i]);
 	}
 	printf("\n");
-	
-#if defined(TCSUPPORT_CPU_AN7583)
-	if((rotpk_2nd != NULL))
-	{
-		ip_file = fopen(rotpk_2nd, "rb");
-		if (ip_file == NULL)
-		{
-			ERROR("Cannot read %s\n", rotpk_2nd);
-			return -1;
-		}
 
-		byte = fread(hash_sha, 1, rotpk_len, ip_file);
-		fclose(ip_file);
-		if (byte != rotpk_len)
-		{
-			ERROR("Read length error %d\n", byte);
-			return -1;
-		}
-		memcpy(secure_data.rotpk_dual, hash_sha, rotpk_len);
-		printf("2nd Root of trusted public key hashed value:\n");
 
-		for (i = 0; i < rotpk_len; i++)
-		{
-			printf("%x ", hash_sha[i]);
-		}
-		printf("\n");	
-	}
-#endif
 
 	/*secure_data.vaild = SECURE_VAILD;*/
 
@@ -326,14 +265,10 @@ int main(int argc, char *argv[])
 	int c = 0, opt_idx = 0;
 	char *key = NULL;
 	char *rotpk = NULL;
-	char *key_2nd = NULL;
-	char *rotpk_2nd = NULL;
 	char *out_fn = NULL;
 	const struct option *cmd_opt =NULL;
 	FILE *op_file = NULL;
-#ifdef TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY
-	char out_flash_fn[128];
-#endif
+
 
 	NOTICE("ECONET Cert Tool: %s\n", build_msg);
 
@@ -349,7 +284,7 @@ int main(int argc, char *argv[])
 	while (1)
 	{
 		/* getopt_long stores the option index here. */
-		c = getopt_long(argc, argv, "h:a:s:k:K:r:R:o:", cmd_opt, &opt_idx);
+		c = getopt_long(argc, argv, "h:a:s:k:r:o:", cmd_opt, &opt_idx);
 
 		/* Detect the end of the options. */
 		if (c == -1)
@@ -376,14 +311,8 @@ int main(int argc, char *argv[])
 		case 'k':
 			key = optarg;
 			break;
-		case 'K':
-			key_2nd = optarg;
-			break;
 		case 'r':
 			rotpk = optarg;
-			break;
-		case 'R':
-			rotpk_2nd = optarg;
 			break;
 		case 'o':
 			out_fn = optarg;
@@ -424,15 +353,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-#ifdef TCSUPPORT_CPU_AN7583
-	if (check_argument(enc_alg, hash_alg, key_2nd, rotpk_2nd))
-	{
-		ERROR("Input argument length mismatch\n");
-		exit(1);
-	}
-#endif
-
-	if (efuse_create(enc_alg, hash_alg, key, rotpk, key_2nd, rotpk_2nd))
+	if (efuse_create(enc_alg, hash_alg, key, rotpk))
 	{
 		ERROR("secure efuse create error\n");
 		exit(1);
@@ -450,38 +371,11 @@ int main(int argc, char *argv[])
 	}
 	if (fseek(op_file, 0, SEEK_SET))
 	{
-		fclose(op_file);
-
 		ERROR("fseek failed\n");
 		exit(1);
 	}
 	fwrite(&secure_data, 1, sizeof(secure_efuse_t), op_file);
 	fclose(op_file);
-
-#ifdef TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY
-	/* New file for tcboot.bin */
-	sprintf (out_flash_fn, "%s_flash", out_fn);
-
-	op_file = fopen(out_flash_fn, "wb");
-	if (op_file == NULL)
-	{
-		ERROR("Cannot write %s\n", out_flash_fn);
-		return -1;
-	}
-	if (fseek(op_file, 0, SEEK_SET))
-	{
-		fclose(op_file);
-
-		ERROR("fseek failed\n");
-		exit(1);
-	}
-
-	secure_data.vaild = SECURE_VAILD;
-
-	/* Add padding 4 bytes for env CRC value */
-	fwrite(&secure_data, 1, (sizeof(secure_efuse_t)+ENV_CRC_VALUE_LENGTH), op_file);
-	fclose(op_file);
-#endif
 
 	return 0;
 }

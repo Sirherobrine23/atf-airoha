@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2022, ARM Limited and Contributors. All rights reserved.
+ * Copyright (c) 2016-2018, ARM Limited and Contributors. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -120,17 +120,7 @@ toc_entry_t toc_entries[] = {
 		.cmdline_name = "nt-fw"
 	},
 #endif
-	{
-		.name = "Realm Monitor Management Firmware",
-		.uuid = UUID_REALM_MONITOR_MGMT_FIRMWARE,
-		.cmdline_name = "rmm-fw"
-	},
 	/* Dynamic Configs */
-	{
-		.name = "FW_CONFIG",
-		.uuid = UUID_FW_CONFIG,
-		.cmdline_name = "fw-config"
-	},
 	{
 		.name = "HW_CONFIG",
 		.uuid = UUID_HW_CONFIG,
@@ -225,31 +215,6 @@ toc_entry_t toc_entries[] = {
 		.cmdline_name = "nt-fw-cert"
 	},
 #endif
-	{
-		.name = "SiP owned Secure Partition content certificate",
-		.uuid = UUID_SIP_SECURE_PARTITION_CONTENT_CERT,
-		.cmdline_name = "sip-sp-cert"
-	},
-	{
-		.name = "Platform owned Secure Partition content certificate",
-		.uuid = UUID_PLAT_SECURE_PARTITION_CONTENT_CERT,
-		.cmdline_name = "plat-sp-cert"
-	},
-	{
-		.name = "CCA Content Certificate",
-		.uuid = UUID_CCA_CONTENT_CERT,
-		.cmdline_name = "cca-cert"
-	},
-	{
-		.name = "Core Secure World Key Certificate",
-		.uuid = UUID_CORE_SWD_KEY_CERT,
-		.cmdline_name = "core-swd-cert"
-	},
-	{
-		.name = "Platform Key Certificate",
-		.uuid = UUID_PLAT_KEY_CERT,
-		.cmdline_name = "plat-key-cert"
-	},
 	{
 		.name = NULL,
 		.uuid = { {0} },

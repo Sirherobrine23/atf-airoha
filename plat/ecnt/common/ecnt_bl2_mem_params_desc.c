@@ -30,15 +30,11 @@ static bl_mem_params_node_t bl2_mem_params_descs[] = {
 	    SET_STATIC_PARAM_HEAD(image_info, PARAM_EP,
 		    VERSION_2, image_info_t, 0),
 	    .image_info.image_base = BL31_BASE,
-	    .image_info.image_max_size = TZRAM_SIZE,
-#ifndef TCSUPPORT_TPL_SUPPORT
+	    .image_info.image_max_size = BL31_LIMIT - BL31_BASE,
 
 	    .next_handoff_image_id = BL33_IMAGE_ID,
-#else
-		.next_handoff_image_id = INVALID_IMAGE_ID,
-#endif
     },
-#ifndef TCSUPPORT_TPL_SUPPORT
+
 	/* Fill BL33 related information */
     {
 		.image_id = BL33_IMAGE_ID,
@@ -57,6 +53,7 @@ static bl_mem_params_node_t bl2_mem_params_descs[] = {
 		#else
 		.next_handoff_image_id = INVALID_IMAGE_ID,
 		#endif
+		
     },
 
 #ifdef TCSUPPORT_OPTEE
@@ -75,7 +72,6 @@ static bl_mem_params_node_t bl2_mem_params_descs[] = {
 
 		.next_handoff_image_id = INVALID_IMAGE_ID,
     }
-#endif
 #endif
 };
 

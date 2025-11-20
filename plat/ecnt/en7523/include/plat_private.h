@@ -14,7 +14,7 @@ typedef struct hw_trap {
 	uint32_t skip_fw_upgrade		:1;
 	uint32_t fw_upgrade_mode		:1;
 	uint32_t inc_mode				:1;
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7552)
 	uint32_t hw_trap_decode			:7;
 	uint32_t inc_mdio_mode			:1;
 	uint32_t is_emmc				:1;
@@ -36,47 +36,22 @@ typedef struct hw_trap {
 int efuse_write_pkgid(uint8_t id, uint8_t remark);
 int efuse_write_secure_key(uint8_t *p_buf);
 int efuse_check_secure_key(unsigned int disableMsg);
-#if defined(TCSUPPORT_CPU_AN7583)
-int efuse_enable_dual_key (void);
-int efuse_dump_secure_cfg (void);
-int efuse_enable_multi_boot (void);
-int efuse_enable_hw_bypass (void);
-int efuse_write_board_id(uint8_t idx, uint8_t id, uint8_t remark);
-int efuse_read_out(uint8_t *p_buf);
-#endif
-
 int efuse_test(unsigned int mode, unsigned int sub);
 int get_hash_mode_by_efuse(void);
-int efuse_write_dbg(unsigned char efuse_page,unsigned int efuse_addr_offset, unsigned int Len, unsigned char *src_data);
-int efuse_bl2_version(unsigned int version,unsigned int mode);
-
 #endif
 int ecnt_system_init(unsigned long long *p_dram_size);
 unsigned char ef_read_byte(unsigned int index);
 unsigned int is_asic(void);
 int get_asic_mode_by_efuse(void);
 int get_into_inic(void);
-int get_valid(void);
-int decrypt_dm_key(uint8_t *p_buf, unsigned int size);
-#ifdef TCSUPPORT_CPU_AN7583
-int get_anti_rb_en(void);
-
-
-int efuse_check_remark (void);
-
-#endif
-unsigned int* get_secure_data_base(void);
-#if !defined(TCSUPPORT_CPU_EN7581) && !defined(TCSUPPORT_CPU_AN7583)
+#ifndef TCSUPPORT_CPU_EN7581
 int get_freq_by_efuse(void);
 int get_freq_sel(void);
 #endif
 void fill_secure_data(uint8_t *p_data, uint8_t offset, size_t len);
 int efuse_init(void);
-void plat_ecnt_io_setup(const hw_trap_t *hw_trap);
+void plat_ecnt_io_setup(void);
 int plat_check_bypass(void);
-#ifdef TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY
-int plat_check_secure_boot_flash_key(void);
-#endif
 int plat_check_header(uint8_t *base);
 void plat_invaild_clean_cache();
 #if !defined(IMAGE_BL31) && !defined(IMAGE_BL21) && !defined(IMAGE_BL22)

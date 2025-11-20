@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2023, Arm Limited and Contributors. All rights reserved.
+ * Copyright (c) 2014-2018, ARM Limited and Contributors. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -7,9 +7,9 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
+
+#include <common/debug.h>
 
 #define get_num_va_args(_args, _lcount)				\
 	(((_lcount) > 1)  ? va_arg(_args, long long int) :	\
@@ -36,28 +36,19 @@ static int string_print(const char *str)
 }
 
 static int unsigned_num_print(unsigned long long int unum, unsigned int radix,
-			      char padc, int padn, bool uppercase)
+			      char padc, int padn)
 {
 	/* Just need enough space to store 64 bit decimal integer */
 	char num_buf[20];
 	int i = 0, count = 0;
 	unsigned int rem;
 
-	/* num_buf is only large enough for radix >= 10 */
-	if (radix < 10) {
-		assert(0);
-		return 0;
-	}
-
 	do {
 		rem = unum % radix;
-		if (rem < 0xa) {
+		if (rem < 0xa)
 			num_buf[i] = '0' + rem;
-		} else if (uppercase) {
-			num_buf[i] = 'A' + (rem - 0xa);
-		} else {
+		else
 			num_buf[i] = 'a' + (rem - 0xa);
-		}
 		i++;
 		unum /= radix;
 	} while (unum > 0U);
@@ -84,7 +75,6 @@ static int unsigned_num_print(unsigned long long int unum, unsigned int radix,
  * %x - hexadecimal format
  * %s - string format
  * %d or %i - signed decimal format
- * %c - character format
  * %u - unsigned decimal format
  * %p - pointer format
  *
@@ -108,10 +98,8 @@ int vprintf(const char *fmt, va_list args)
 	char padc = '\0'; /* Padding character */
 	int padn; /* Number of characters to pad */
 	int count = 0; /* Number of printed characters */
-	bool uppercase; /* Print characters in uppercase */
 
 	while (*fmt != '\0') {
-		uppercase = false;
 		l_count = 0;
 		padn = 0;
 
@@ -120,9 +108,6 @@ int vprintf(const char *fmt, va_list args)
 			/* Check the format specifier */
 loop:
 			switch (*fmt) {
-			case '%':
-				(void)putchar('%');
-				break;
 			case 'i': /* Fall through to next one */
 			case 'd':
 				num = get_num_va_args(args, l_count);
@@ -134,11 +119,7 @@ loop:
 					unum = (unsigned long long int)num;
 
 				count += unsigned_num_print(unum, 10,
-							    padc, padn, uppercase);
-				break;
-			case 'c':
-				(void)putchar(va_arg(args, int));
-				count++;
+							    padc, padn);
 				break;
 			case 's':
 				str = va_arg(args, char *);
@@ -152,15 +133,12 @@ loop:
 				}
 
 				count += unsigned_num_print(unum, 16,
-							    padc, padn, uppercase);
+							    padc, padn);
 				break;
-			case 'X':
-				uppercase = true;
-				// fall through
 			case 'x':
 				unum = get_unum_va_args(args, l_count);
 				count += unsigned_num_print(unum, 16,
-							    padc, padn, uppercase);
+							    padc, padn);
 				break;
 			case 'z':
 				if (sizeof(size_t) == 8U)
@@ -175,7 +153,7 @@ loop:
 			case 'u':
 				unum = get_unum_va_args(args, l_count);
 				count += unsigned_num_print(unum, 10,
-							    padc, padn, uppercase);
+							    padc, padn);
 				break;
 			case '0':
 				padc = '0';
@@ -198,8 +176,10 @@ loop:
 			fmt++;
 			continue;
 		}
+#if defined(CONFIG_ECNT)
 		if (*fmt == '\n')
 			(void)putchar('\r');
+#endif
 		(void)putchar(*fmt);
 		fmt++;
 		count++;

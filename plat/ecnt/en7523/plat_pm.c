@@ -21,7 +21,6 @@
 
 #include <en7523_def.h>
 #include <plat_private.h>
-#include <asm/tc3162.h>
 
 #define AUTO_POWER_OFF	1
 #define POLLING_TIMES	10000
@@ -336,24 +335,15 @@ void timerSet(uint32_t timer_no, uint32_t timerTime, uint32_t enable, uint8_t ti
     timerCtlSet(timer_no, enable, timer_halt);
 }
 
- void __dead2 plat_system_reset(void)
+static void __dead2 plat_system_reset(void)
 {
 	/* Write the System Configuration Control Register */
 	INFO("EcoNet System Reset\n");
-	uint32_t tmp;
 
 	timerSet(3, 10 * TIMERTICKS_10MS, ENABLE, TIMER_HALTDISABLE);
 	mmio_write_32(CR_WDOG_RLD, 0x1);
 	timer_WatchDogConfigure(ENABLE, ENABLE);
-	if(isAN7583)
-	{
-		/* make sure DDR data are all done before reset*/
-		tmp = mmio_read_32(DRAMC_CONF);
-		tmp &= ~(1<<2);
-		mmio_write_32(DRAMC_CONF, tmp);
-		/*7583 boot flag*/
-		mmio_write_32(EN7523_SCREG_WF0, (mmio_read_32(EN7523_SCREG_WF0)|(DBG_7583_BOOT_MAGIC)));
-	}
+
 	wfi();
 	ERROR("EcoNet System Reset: operation not handled.\n");
 	panic();

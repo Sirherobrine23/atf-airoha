@@ -25,14 +25,14 @@
 
 extern void bl31_db_entrypoint(void);
 extern int console_ecnt_register(uintptr_t baseaddr, console_t *console);
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#ifdef TCSUPPORT_CPU_EN7581
 extern int efuse_check_eco(void);
 #endif
-extern uint32_t uartDisable;
+
 static entry_point_info_t bl32_ep_info;
 static entry_point_info_t bl33_ep_info;
 static console_t console;
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#if defined(TCSUPPORT_CPU_EN7581)
 #define L2C_SRAM_CONFIG
 #endif
 #ifdef L2C_SRAM_CONFIG
@@ -66,7 +66,7 @@ extern void ca53_enable_icache(void);
 
 /* when CSR_L2C_CFG_MP0[0]==0, CSR_L2C_CFG_MP0[11:8]==0,1,2 for 128k,256k,512k L2 cache respectively.
  * when CSR_L2C_CFG_MP0[0]==1, CSR_L2C_CFG_MP0[11:8]==0,1,2 for 128k,256k,512k L2 sram respectively. */
-#if (defined(TCSUPPORT_CPU_EN7581)) && (!defined(TCSUPPORT_CPU_AN7583))
+#if defined(TCSUPPORT_CPU_EN7581)
 static unsigned int l2c_config[] = {0x101/*256K_L2C+256K_SRAM*/, 0x301/*512K_SRAM*/, 0x300/*512K_L2C*/};
 static char *l2c_type_name[] = {"256K_L2C+256K_SRAM", "512K_SRAM", "512K_L2C"};
 static unsigned int t_size[] = {S_256K, S_512K, 0};
@@ -77,7 +77,7 @@ static unsigned int t_size[] = {S_128K, S_256K, 0};
 #endif
 #ifdef L2C_SRAM_VERIFY
 #define L2C_SRAM_INTER_BASE (0x08000000)
-#if (defined(TCSUPPORT_CPU_EN7581)) && (!defined(TCSUPPORT_CPU_AN7583))
+#if defined(TCSUPPORT_CPU_EN7581)
 #define L2C_SRAM_EXTER_BASE (0x1EF00000)
 #else
 #define L2C_SRAM_EXTER_BASE (0x1EFC0000)
@@ -92,7 +92,7 @@ static unsigned long t_pat[] = {0xa5a5a5a5a5a5a5a5, 0x5a5a5a5a5a5a5a5a, 0xffffff
 
 unsigned long long calculate_dram_size(void)
 {    
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#if defined(TCSUPPORT_CPU_EN7581)
 	return S_8G;
 #else
 	return S_2G;
@@ -102,12 +102,12 @@ unsigned long long calculate_dram_size(void)
 
 static void platform_setup_cpu(void)
 {
-	/* Set Core to AArch64 */
-#if (defined(TCSUPPORT_CPU_EN7581)) && (!defined(TCSUPPORT_CPU_AN7583))
-	mmio_setbits_32((MCUCFG_BASE + 0x3C), 0xf << 12); /* for cpu0~3 */
-#else
+	/* Set Core to Arch64 */
+    #ifdef TCSUPPORT_CPU_EN7581
+    mmio_setbits_32((MCUCFG_BASE + 0x3C), 0xf << 12); /* for cpu0~3 */
+    #else
 	mmio_setbits_32((MCUCFG_BASE + 0x3C), 0x3 << 12); /* for cpu0~1 */
-#endif
+    #endif
 }
 
 static void set_tzpc_attr(void)
@@ -140,14 +140,7 @@ entry_point_info_t *bl31_plat_get_next_image_ep_info(uint32_t type)
 {
 	entry_point_info_t *next_image_info;
 
-
 	next_image_info = (type == NON_SECURE) ? &bl33_ep_info : &bl32_ep_info;
-
-	if (next_image_info->pc){
-		if(!uartDisable){
-		INFO(" next pc = 0x%x \n",next_image_info->pc );
-		}
-	}
 
 	/* None of the images on this platform can have 0x0 as the entrypoint */
 	if (next_image_info->pc)
@@ -158,7 +151,7 @@ entry_point_info_t *bl31_plat_get_next_image_ep_info(uint32_t type)
 
 void debug_init(void)
 {
-	tf_log_set_max_level(LOG_LEVEL_VERBOSE);
+	tf_log_set_max_level(LOG_LEVEL_ERROR);
 }
 
 /*******************************************************************************
@@ -176,13 +169,7 @@ void bl31_early_platform_setup2(u_register_t arg0, u_register_t arg1,
 	    VERSION_2, NON_SECURE | EXECUTABLE);
 
     bl33_ep_info.pc = BL33_BASE;
-#ifdef TCSUPPORT_CPU_ARMV8_64
-	ERROR("force change spsr...\n");
-	bl33_ep_info.spsr = 0x3c9;
-	bl33_ep_info.args.arg0 = 0;
-#else
 	bl33_ep_info.spsr = plat_get_spsr_for_bl33_entry();
-#endif
 
 	#ifdef TCSUPPORT_OPTEE
 	SET_PARAM_HEAD(&bl32_ep_info, PARAM_EP,
@@ -212,10 +199,9 @@ void bl31_platform_setup(void)
 
 	/* setup the TZPC attr here*/ 
 	set_tzpc_attr();
-	
 	efuse_init();
 
-	plat_ecnt_io_setup(NULL);
+	plat_ecnt_io_setup();
 
 	/* Initialize the gic cpu and distributor interfaces */
 	plat_arm_gic_driver_init();
@@ -320,9 +306,8 @@ void l2c_sram_config(int type)
     writeReg32(CSR_L2C_CFG_MP0, val);
 
     ca53_enable_icache();   /* dcache will be enabled later in plat_configure_mmu_el3 */
-	if(!uartDisable){
+
     printf("L2C_type:%s\r\n", l2c_type_name[type]);
-	}
     writeReg32(0x1fb00280, t_size[type]); /* use register to pass l2c_sram type to kernel */
 
     return;
@@ -399,7 +384,7 @@ void bl31_plat_arch_setup(void)
     l2c_sram_config(l2t_full_l2c);
 #endif
 
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#ifdef TCSUPPORT_CPU_EN7581
 	if (1 == efuse_check_eco())
 	{
 		mmio_setbits_32(RG_TOP_REV_24, (uint32_t)0x1 << 0);
@@ -422,7 +407,6 @@ void bl31_plat_arch_setup(void)
                    BL_COHERENT_RAM_END);
 
     for (i=0; i<3; i++) {
-		if(!uartDisable){
         ccsidr = get_ccsidr(cssel_config[i]);
         numSet = ((ccsidr>>13)&0x3fff)+1;
         associativity = ((ccsidr>>3)&0x2ff)+1;
@@ -430,7 +414,6 @@ void bl31_plat_arch_setup(void)
         cacheSize = (numSet*associativity*LineSize);
         printf("%s cache size: %d KB (with set/asso/line==%d/%d/%d)\n", 
                 cache_name[i], cacheSize>>10, numSet, associativity, LineSize);
-		}	
     }
     return;
 }

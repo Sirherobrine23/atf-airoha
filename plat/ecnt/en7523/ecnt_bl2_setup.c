@@ -28,6 +28,7 @@
 #include <flashhal.h>
 #include <xmodem.h>
 #include <ecnt_scu.h>
+#include <mtk_an7563_gpio.h>
 
 /* Data structure which holds the extents of the trusted SRAM for BL1*/
 static meminfo_t bl2_el3_tzram_layout;
@@ -40,7 +41,7 @@ unsigned int rst_vector_base_addr = RVBADDRESS_CPU0;
 
 extern int console_ecnt_register(uintptr_t baseaddr, console_t *console);
 extern int XModemReceive(console_t *console, unsigned int bufLen , unsigned char *bufBase);
-extern void get_bootimage_by_npu_iNIC(unsigned int imgDstAddr);
+extern void	get_bootimage_by_npu_iNIC(unsigned int imgDstAddr);
 extern void disable_NPU_dbgMsg(void);
 extern void phy_config_efuse_load(void);
 extern void ef_read_parse(unsigned int start, unsigned int len, unsigned char *data);
@@ -62,11 +63,11 @@ void hw_trap_init(void)
 
 		switch (mode)
 		{
-#if (!defined(TCSUPPORT_CPU_AN7552) && !defined(TCSUPPORT_CPU_AN7583))
+#ifndef TCSUPPORT_CPU_AN7552
 			case DBG_INIC_MODE:
 			{
 				hw_trap.inc_mode = 1;
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#ifdef TCSUPPORT_CPU_EN7581
 				hw_trap.inc_mdio_mode = 0;
 #endif
 				hw_trap.fw_upgrade_mode = 0;
@@ -74,7 +75,7 @@ void hw_trap_init(void)
 				NOTICE("DBG_INIC_MODE\n");
 				break;
 			}
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#ifdef TCSUPPORT_CPU_EN7581
 			case DBG_INIC_MDIO_MODE:
 			{
 				hw_trap.inc_mode = 0;
@@ -89,7 +90,7 @@ void hw_trap_init(void)
 			case DBG_FWU_MODE:
 			{
 				hw_trap.inc_mode = 0;
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#ifdef TCSUPPORT_CPU_EN7581
 				hw_trap.inc_mdio_mode = 0;
 #endif
 				hw_trap.fw_upgrade_mode = 1;
@@ -100,7 +101,7 @@ void hw_trap_init(void)
 			case DBG_FLASH_MODE:
 			{
 				hw_trap.inc_mode = 0;
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#ifdef TCSUPPORT_CPU_EN7581
 				hw_trap.inc_mdio_mode = 0;
 #endif
 				hw_trap.fw_upgrade_mode = 0;
@@ -116,9 +117,9 @@ void hw_trap_init(void)
 	{
 		hw_trap.skip_fw_upgrade	= !(mmio_read_32(EN7523_SEC_SSR) & BOOT_SEL_BY_HWTRAP);
 		hw_trap.fw_upgrade_mode	= !(mmio_read_32(EN7523_HWTRAP_CONF) & HWTRAP_FW_UPGRADE);
-#if (!defined(TCSUPPORT_CPU_AN7552) && !defined(TCSUPPORT_CPU_AN7583))
+#ifndef TCSUPPORT_CPU_AN7552
 		hw_trap.inc_mode 		= (hwtrap_cfg == HWTRAP_INIC_MODE);
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#ifdef TCSUPPORT_CPU_EN7581
 		hw_trap.inc_mdio_mode	= (hwtrap_cfg == HWTRAP_INIC_MDIO_MODE);
 #endif
 #endif
@@ -126,24 +127,18 @@ void hw_trap_init(void)
 
 	SET_IS_SPI_CONTROLLER_ECC(0);
 
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7552)
+#if defined(TCSUPPORT_CPU_EN7581)
 	if((hwtrap_cfg == HWTRAP_EMMC_MODE) ||
 	   (hwtrap_cfg == HWTRAP_EMMC_MODE2)) {
 		hw_trap.is_emmc = 1;
 	}
 #endif
 	if((hwtrap_cfg == HWTRAP_ROM_3BNOR_MODE) ||
-	   (hwtrap_cfg == HWTRAP_ROM_4BNOR_MODE) ||
-	   (hwtrap_cfg == HWTRAP_FLASH_3BNOR_MODE) ||
-	   (hwtrap_cfg == HWTRAP_FLASH_3BNOR_MODE2) ||
-	   (hwtrap_cfg == HWTRAP_FLASH_4BNOR_MODE) ||
-	   (hwtrap_cfg == HWTRAP_FLASH_4BNOR_MODE2)) {
+	   (hwtrap_cfg == HWTRAP_ROM_4BNOR_MODE)) {
 		hw_trap.is_spi_nor = 1;
 	}
-	if((hwtrap_cfg == HWTRAP_FLASH_NAND_MODE) ||
-	   (hwtrap_cfg == HWTRAP_FLASH_NAND_MODE2) ||
-	   (hwtrap_cfg == HWTRAP_ROM_NAND_MODE) ||
+	if((hwtrap_cfg == HWTRAP_ROM_NAND_MODE) ||
 	   (hwtrap_cfg == HWTRAP_ROM_NAND_MODE2)) {
 		hw_trap.is_spi_nand_device_ecc = 1;
 	}
@@ -161,7 +156,8 @@ void hw_trap_init(void)
 
 void debug_init(void)
 {
-	tf_log_set_max_level(LOG_LEVEL_NOTICE);
+
+		tf_log_set_max_level(LOG_LEVEL_ERROR);
 }
 
 void __dead2 plat_error_handler(int err)
@@ -261,17 +257,17 @@ void bl2_el3_plat_arch_setup(void)
 	generic_delay_timer_init();
 	ecnt_system_init(&dram_size);
 
-#ifdef CPU_BUS_BL2_TEST
+    #ifdef CPU_BUS_BL2_TEST
     tests_on_l2c_sram();
-#endif
+    #endif
 
 	mmap_add_region(EN7523_MEM_BASE, EN7523_MEM_BASE, dram_size, MT_DEVICE | MT_RW | MT_SECURE);
-    	plat_configure_mmu_svc_mon(bl2_el3_tzram_layout.total_base,
-                		   bl2_el3_tzram_layout.total_size,
-                		   BL_CODE_BASE,
-                		   BL2_CODE_END,
-                		   BL_COHERENT_RAM_BASE,
-                		   BL_COHERENT_RAM_END);
+    plat_configure_mmu_svc_mon(bl2_el3_tzram_layout.total_base,
+                   bl2_el3_tzram_layout.total_size,
+                   BL_CODE_BASE,
+                   BL2_CODE_END,
+                   BL_COHERENT_RAM_BASE,
+                   BL_COHERENT_RAM_END);
 
 #endif
 
@@ -290,6 +286,7 @@ void bl2_plat_preload_setup_optimize(void)
 #ifdef IMAGE_BL21
 		struct image_info info = {0};
 		Bl2_optimize_header_t *f_header = NULL;
+		
 		f_header = (Bl2_optimize_header_t*)((unsigned char*)BL2_OPTIMIZE_HEADER_BASE);
 
 		/* parsing decompress info*/
@@ -302,10 +299,12 @@ void bl2_plat_preload_setup_optimize(void)
 			f_header->lzma_src -= ECNT_L2_SRAM_SIZE;
 #endif
 
+
 		/* Setup the lzma attr*/
 		image_decompress_init(f_header->lzma_src, EN7523_IMAGE_BUF_SIZE, lzmaBuffToBuffDecompress);
 		image_decompress_work_buf_init(EN7523_IMAGE_BUF_OFFSET, EN7523_IMAGE_BUF_SIZE);
 		image_decompress_prepare(&info);
+	
 		image_decompress(&info);
 
 		__attribute__((noreturn)) void (*bl2)(void);
@@ -321,11 +320,12 @@ void bl2_plat_preload_setup_optimize(void)
 			image_decompress(&info);
 			VPint(BL2_OPTIMIZE_STATUS) = 0;
 		}
+		
 
 		/* jump to nextimage*/
 		inv_dcache_range(BL1_RW2_BASE, BL1_RW2_SIZE);
 		disable_mmu_icache_secure();
-
+		
 		(*bl2)();
 
 #elif IMAGE_BL22
@@ -342,7 +342,7 @@ void bl2_plat_preload_setup_optimize(void)
 		/* jump to bl21*/
 		inv_dcache_range(BL1_RW2_BASE, BL1_RW2_SIZE);
 		disable_mmu_icache_secure();
-
+		
 		(*bl2)();
 #endif
 
@@ -368,114 +368,58 @@ void bl2_plat_preload_setup(void)
 
 	bl2_platform_setup();
 
-	if (plat_get_dual_boot())
+	if(plat_get_dual_boot())
 	{
 		fip_offset += PLAT_ECNT_MULTI_BOOT_SIZE;
 		fwu_img_len += PLAT_ECNT_MULTI_BOOT_SIZE;
 	}
 
-#ifdef INC_MODE
-	if (hw_trap.inc_mode)
+	if (hw_trap.fw_upgrade_mode && !(hw_trap.skip_fw_upgrade) && !(plat_get_hw_bypass()))
 	{
+		int len = 0;
 
-		get_bootimage_by_npu_iNIC((unsigned int) PLAT_ECNT_FIP_BASE);
+		flash_read_status = flash_read(PLAT_ECNT_FIP_OFFSET, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *) PLAT_ECNT_FIP_BASE);
+		if ((flash_read_status == FLASH_READ_STATUS_INCORRECT) || 
+			(flash_read_status == FLASH_READ_STATUS_CORRECT && plat_check_bypass() != BYPASS_FWUPGRADE))
+		{
+			printf("Press x to update firmware\n");
+			while (len == 0)
+			{
+				if (console.getc(&console) == 'x')
+				{
+					len = XModemReceive(&console, fwu_img_len,
+								(uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE));
+				}
+			}
+
+			if (len == fwu_img_len)
+			{
+				flash_erase(0, len);
+				flash_write(0, len, (uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE));
+				if (plat_get_dual_boot())
+				{
+					/*put the image to FIP BASE for booting */
+					flash_read(fip_offset, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *) PLAT_ECNT_FIP_BASE);
+				}
+			}
+		} else if(flash_read_status == FLASH_READ_STATUS_CORRECT && plat_check_bypass() == BYPASS_FWUPGRADE){
+			NOTICE("BYPASS\n");
+		}
 	}
 	else
-#endif
 	{
-		if (hw_trap.fw_upgrade_mode && !(hw_trap.skip_fw_upgrade) && !(plat_get_hw_bypass()))
+		if (flash_read(fip_offset, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *) PLAT_ECNT_FIP_BASE) == FLASH_READ_STATUS_CORRECT)
 		{
-			int len = 0;
-
-			flash_read_status = flash_read(PLAT_ECNT_FIP_OFFSET, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *)  PLAT_ECNT_FIP_BASE);
-			if ((flash_read_status == FLASH_READ_STATUS_INCORRECT) ||
-			     (flash_read_status == FLASH_READ_STATUS_CORRECT && plat_check_bypass() != BYPASS_FWUPGRADE))
-			{
-				printf("Press x to load BL31 + U-Boot FIP\n");
-				while (len == 0)
-				{
-					if (console.getc(&console) == 'x')
-					{
-						// len = XModemReceive(&console, fwu_img_len,
-						// 		    (uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE));
-						len = XModemReceive(&console, PLAT_ECNT_FIP_MAX_SIZE,
-								    (uint8_t *) PLAT_ECNT_FIP_BASE);
-					}
-				}
-
-// #if defined(TCSUPPORT_TPL_SUPPORT)
-// 				if (len >= 0x80000)
-// 				{
-// 					if(hw_trap.is_emmc){
-// 						flash_erase(0, len);
-// 						flash_write(0, len, (uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE));
-// 					}
-// 					if (hw_trap.is_spi_nand_device_ecc ||
-// 					    hw_trap.is_spi_nand_ctrl_ecc ||
-// 					    hw_trap.is_parallel_nand) {
-// 						if(len == 0x80000)
-// 						{
-// 							flash_erase(0, len);
-// 							flash_write(0, len, (uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE));
-// 						}
-// 						else
-// 						{
-// 							/*no need gpte padding*/
-// 							flash_erase(0, len-0x4000);
-// 							flash_write(0, 0x80000, (uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE));
-// 							flash_write(0x80000, len-0x84000, (uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE + 0x84000));
-// 						}
-// 					}
-// 				}
-// #else
-// 				if (len == fwu_img_len)
-// 				{
-// 					flash_erase(0, len);
-// 					flash_write(0, len, (uint8_t *) (PLAT_ECNT_FIP_BASE - PLAT_ECNT_MV_DATA_SIZE));
-// 					if (plat_get_dual_boot())
-// 					{
-// 						/*put the image to FIP BASE for booting */
-// 						flash_read(fip_offset, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *) PLAT_ECNT_FIP_BASE);
-// 					}
-// 				}
-// #endif
-			} else if(flash_read_status == FLASH_READ_STATUS_CORRECT && plat_check_bypass() == BYPASS_FWUPGRADE){
-				NOTICE("BYPASS\n");
-			}
 		}
 		else
 		{
-			if (flash_read(fip_offset, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *) PLAT_ECNT_FIP_BASE) == FLASH_READ_STATUS_CORRECT)
-			{
-			}
-			else
-			{
-				panic();
-			}
+			panic();
 		}
 	}
 
 	while (plat_check_header((uint8_t *) PLAT_ECNT_FIP_BASE) == 0)
 	{
-#ifdef INC_MODE
-		if (get_into_inic())
-		{
-			get_bootimage_by_npu_iNIC((unsigned int) PLAT_ECNT_FIP_BASE);
-		}
-		else
-#endif
-		{
-			panic();
-		}
-	}
-#endif
-
-#ifdef IMAGE_BL23
-	/* Read BL31+U-Boot from offset for eMMC. For NAND FIP is read by UBI module */
-	if (hw_trap.is_emmc &&
-	    (!hw_trap.fw_upgrade_mode || hw_trap.skip_fw_upgrade || plat_get_hw_bypass())) {
-		if (flash_read(PLAT_ECNT_BL31_FIP_OFFSET, PLAT_ECNT_FIP_MAX_SIZE, (uint8_t *) PLAT_ECNT_FIP_BASE) != FLASH_READ_STATUS_CORRECT)
-			panic();
+		panic();
 	}
 #endif
 }
@@ -485,7 +429,8 @@ void bl2_platform_setup(void)
 #if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
 	hw_trap_init();
 	flash_init(&hw_trap);
-	plat_ecnt_io_setup(&hw_trap);
+	plat_ecnt_io_setup();
+	init_gpio();
 #endif
 }
 #if !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
@@ -502,24 +447,6 @@ int bl2_plat_handle_post_image_load(unsigned int image_id)
 		}
 	}
 
-	#if defined(TCSUPPORT_TPL_ENC)
-	unsigned char* pSSK = get_ssk();
-	unsigned char i;
-	
-	unsigned char zero_key[32]={0};
-	if(strcmp(zero_key,pSSK)==0){
-		ERROR(" \033[31;1m You cannot boot without fusing secure key.\033[0m\n");
-		panic();
-	}
-	
-	for(i=0;i<32;i++){
-		//NOTICE("[deliever ssk][0x%x] = 0x%x\n",pSSK+i,*(pSSK+i));
-		mmio_write_8(SSK_BASE+i, *(pSSK+i));
-	}		
-	#endif
-	
-	
-
 	return 0;
 }
 
@@ -532,5 +459,52 @@ int bl2_plat_handle_pre_image_load(unsigned int image_id)
 	return 0;
 }
 
+#if !defined(IMAGE_BL31) && !defined(IMAGE_BL21) && !defined(IMAGE_BL22)
+int plat_get_dual_boot(void)
+{
+#if defined(TCSUPPORT_ARM_MULTIBOOT)
+	unsigned char data = 0;
+	unsigned char remark = 0;
+	ef_read_parse(24,2, &data);
+	ef_read_parse(3,1, &remark);
+	
+	if((remark & 0x1) == 0x1)
+	{
+		NOTICE("remark dual boot %d\n",((data & (0x1 << 1))!=0)? 1:0);
+		return ((data & (0x1 << 1))!=0)? 1:0;
+	}
+	else
+	{
+		NOTICE("non remark dual boot %d\n",((data & (0x1 << 0))!=0)? 1:0);
+		return ((data & (0x1 << 0))!=0)? 1:0;
+	}
+#else
+	return 0;
+#endif
+}
+
+int plat_get_hw_bypass(void)
+{
+#if defined(TCSUPPORT_ARM_MULTIBOOT)
+	unsigned char data = 0;
+	unsigned char remark = 0;
+	ef_read_parse(26,2, &data);
+	ef_read_parse(3,1, &remark);
+
+	if((remark & 0x1) == 0x1)
+	{
+		NOTICE("remark mode. Disable FWU %d\n",((data & (0x1 << 1))!=0)? 1:0);
+		return ((data & (0x1 << 1))!=0)? 1:0;
+	}
+	else
+	{
+		NOTICE("non remark mode. Disable FWU %d\n", ((data & (0x1 << 0))!=0)? 1:0);
+		return ((data & (0x1 << 0))!=0)? 1:0;
+	}
+#else
+	return 0;
+#endif
+}
+#endif
 #endif
 

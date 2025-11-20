@@ -42,7 +42,7 @@
 #define PLAT_MAX_OFF_STATE		U(2)
 #define PLATFORM_SYSTEM_COUNT		1
 #define PLATFORM_CLUSTER_COUNT		1
-#if defined(TCSUPPORT_CPU_EN7581) && !defined(TCSUPPORT_CPU_AN7583)
+#ifdef TCSUPPORT_CPU_EN7581
 #define PLATFORM_CLUSTER0_CORE_COUNT	4
 #else
 #define PLATFORM_CLUSTER0_CORE_COUNT	2
@@ -62,42 +62,21 @@
  *            | shared mem  (4KB) |
  * 0x80003000 +-------------------+
  *            |                   |
- *            |   BL3-1   (200KB) |
+ *            |   BL3-1   (180KB) |
  *            |                   |
- * 0x80035000 +-------------------+
- *            | reserved   (44KB) |
+ * 0x80030000 +-------------------+
+ *            | reserved   (64KB) |
  * 0x80040000 +-------------------+
  */
 
 #define TZRAM_BASE_OFFSET	UL(0x2000)
-#if defined(TCSUPPORT_CPU_AN7583)
-#define TZRAM_TOTAL_SZIE	UL(0x50000)
-#else
 #define TZRAM_TOTAL_SZIE	UL(0x40000)
-#endif
-#if !defined(TCSUPPORT_TPL_SUPPORT) || defined(IMAGE_BL31)
 #define TZRAM_BASE			(EN7523_MEM_BASE + TZRAM_BASE_OFFSET)
 #define TZRAM_SIZE			(TZRAM_TOTAL_SZIE - TZRAM_BASE_OFFSET - TZRAM2_SIZE)
-#else
-#if defined(TCSUPPORT_TPL_ENC)
-#define TZRAM_BASE			(0x8a900000)
-#define TZRAM_SIZE			(0x23000)
-#else
-#define TZRAM_BASE			(0x1f000000 + 0x00000)
-#define TZRAM_SIZE			(0x17000)
-#endif
-#endif
-
-
-#if defined(TCSUPPORT_TPL_ENC)
-#define FE_SRAM_END         (0x1f020000)
-#define SSK_BASE            (FE_SRAM_END - 0x400) // reserve last 1K 
-#endif
 
 /* Reserved: 64KB */
 #define TZRAM2_BASE			(TZRAM_BASE + TZRAM_SIZE)
-#define TZRAM2_SIZE			UL(0xb000)
-//#define TZRAM2_SIZE			UL(0x10000)
+#define TZRAM2_SIZE			UL(0x10000)
 
 /*******************************************************************************
  * BL1 specific defines.
@@ -168,49 +147,33 @@
  */
 #define BL31_BASE			(TZRAM_BASE + UL(0x1000))
 #define BL31_LIMIT			(TZRAM_BASE + TZRAM_SIZE)
-//#define BL31_LIMIT			(TZRAM_BASE + TZRAM_SIZE + UL(0x1000))
 #define TZRAM2_LIMIT		(TZRAM2_BASE + TZRAM2_SIZE)
 
 #define	BL33_BASE			(EN7523_MEM_BASE + UL(0x1E00000))
 #define BL33_LIMIT			(BL33_BASE + UL(0x100000))
 
 #ifdef TCSUPPORT_OPTEE
-//#define BL32_BASE           (BL31_LIMIT + UL(0x1000))
-//#define BL32_LIMIT          (BL32_BASE + UL(0x6c400))// 433k
-#define BL32_BASE			(EN7523_MEM_BASE + UL(0xa800000))
-#define BL32_LIMIT			(BL32_BASE + UL(0x800000)) // be aware of TA section
+#define BL32_BASE           (BL31_LIMIT + UL(0x1000))
+#define BL32_LIMIT          (BL32_BASE + UL(0x6c400))// 433k
 #endif
 
 /* FIP placed after ROM to append it to BL1 with very little padding. */
 
 #define PLAT_ECNT_MULTI_BOOT_SIZE			(0x100000)
-#define PLAT_ECNT_FIP_OFFSET				(0x800)
-#define PLAT_ECNT_BL31_FIP_OFFSET	(0x20000)
+#define PLAT_ECNT_FIP_OFFSET	(0x800)
 #if defined(IMAGE_BL1)
 #define PLAT_ECNT_FIP_BASE		(BL_SRAM_BASE + BL_SRAM_SIZE)
 #define PLAT_ECNT_FIP_MAX_SIZE	(0x1F800)
 #else
 #define PLAT_ECNT_FIP_BASE		(EN7523_MEM_BASE + UL(0x1800000))
 #define PLAT_ECNT_MV_DATA_SIZE	UL(0x800)
-#if defined(TCSUPPORT_TPL_SUPPORT)
-#define PLAT_ECNT_FIP_MAX_SIZE	UL(0x1ff800)
-#else
-#ifdef TCSUPPORT_TCBOOT_1MB_SIZE
-#define PLAT_ECNT_FIP_MAX_SIZE	UL(0x100000)//original:7f800 
-#else
-#define PLAT_ECNT_FIP_MAX_SIZE	UL(0x7f800)
-#endif
-#endif
+#define PLAT_ECNT_FIP_MAX_SIZE	UL(0x7F800)
 
 #if defined(IMAGE_BL21)
 #define EN7523_IMAGE_BUF_OFFSET		ECNT_NPU_SRAM_BASE
 #define EN7523_IMAGE_BUF_SIZE		(ECNT_L2_SRAM_SIZE/2)
 #else
-#ifdef TCSUPPORT_TCBOOT_1MB_SIZE
-#define EN7523_IMAGE_BUF_OFFSET		(PLAT_ECNT_FIP_BASE + UL(0x100000))
-#else
 #define EN7523_IMAGE_BUF_OFFSET		(PLAT_ECNT_FIP_BASE + UL(0x80000))
-#endif
 #define EN7523_IMAGE_BUF_SIZE		UL(0x58000)
 #endif
 #endif
@@ -228,7 +191,6 @@ typedef struct bl2_optimize_header_t{
 	unsigned int lzma_des;
 	unsigned int lzma_length;
 	unsigned int lzma_cmd;
-	unsigned int fw_ver;
 	unsigned int reserved;
 }Bl2_optimize_header_t;
 #endif
@@ -239,7 +201,7 @@ typedef struct bl2_optimize_header_t{
  ******************************************************************************/
 #define PLAT_PHY_ADDR_SPACE_SIZE	(1ULL << 32)
 #define PLAT_VIRT_ADDR_SPACE_SIZE	(1ULL << 32)
-#define MAX_XLAT_TABLES		7
+#define MAX_XLAT_TABLES		6
 #define MAX_MMAP_REGIONS	16
 
 /*******************************************************************************

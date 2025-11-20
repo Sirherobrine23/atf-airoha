@@ -15,7 +15,6 @@
 #define isEN7523				(GET_HIR() == EN7523_HIR)
 #define isEN7581				(GET_HIR() == EN7581_HIR)
 #define isAN7552				(GET_HIR() == AN7552_HIR)
-#define isAN7583				(GET_HIR() == AN7583_HIR)
 #define isEN7526c				(0)
 #define isEN751627				(0)
 #define isEN7580				(0)

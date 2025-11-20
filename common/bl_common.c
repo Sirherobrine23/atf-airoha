@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2022, Arm Limited and Contributors. All rights reserved.
+ * Copyright (c) 2013-2020, ARM Limited and Contributors. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -18,84 +18,10 @@
 #include <lib/utils.h>
 #include <lib/xlat_tables/xlat_tables_defs.h>
 #include <plat/common/platform.h>
-#if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)
-#include <plat_private.h>
-#include <tools_share/firmware_image_package.h>
 
-#if !defined(IMAGE_BL31)
-#include <flashhal.h>
-#endif
-
-#define FREE_DRAM_ADDRESS			(0x80002000)
-
-#if defined(TCSUPPORT_CPU_AN7552)
-
-#define CRYPTO_INFO_FLASH_OFFSET	(507848)
-#define CRYPTO_INFO_LENGTH			(52)
-
-#elif defined(TCSUPPORT_CPU_AN7583)
-
-#define CRYPTO_INFO_FLASH_OFFSET	(507664)
-#define CRYPTO_INFO_LENGTH			(236)
-
-#elif defined(TCSUPPORT_CPU_EN7581)
-
-#define CRYPTO_INFO_FLASH_OFFSET	(507740)
-#define CRYPTO_INFO_LENGTH			(160)
-
-#else
-
-#define CRYPTO_INFO_FLASH_OFFSET	(507664)
-#define CRYPTO_INFO_LENGTH			(236)
-
-#endif
-
-#define CRYPTO_INFO_BYTE			(8)
-
-#endif
-
-static int disable_auth = 0;
-extern uint32_t uartDisable;
-
-#if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)
-#if defined(IMAGE_BL23) || defined(IMAGE_BL31)
-/******************************************************************************
- * API to update secure data at BL2 and BL31. BL2 read from flash and save to specified dram address.
- * BL31 get secure data from specified dram address.
- *****************************************************************************/
-static void check_Secure_Data (void)
-{
-	uint8_t *buf = (uint8_t *)FREE_DRAM_ADDRESS;
-
-	/* BL31 does not support flash driver. */
-#if defined(IMAGE_BL23)
-	if (flash_read(CRYPTO_INFO_FLASH_OFFSET, CRYPTO_INFO_LENGTH, buf) != FLASH_READ_STATUS_CORRECT)
-	{
-		/* Clear specified DRAM data */
-		memset (buf, 0, sizeof(uint8_t));
-	}
-	else
-#endif
-	{
-		/* Check first data block for secure vaild since vaild bit at first data block. */
-		if (*buf & SECURE_VAILD)
-		{
-			uint8_t i;
-
-			for (i=0 ; i<(CRYPTO_INFO_LENGTH - CRYPTO_INFO_BYTE) ; i++, buf++)
-			{
-				/* Update secure data */
-				fill_secure_data(buf, i, CRYPTO_INFO_BYTE);
-			}
-
-			disable_auth = 0;
-		}
-	}
-
-	return;
-}
-#endif
-#endif
+#if TRUSTED_BOARD_BOOT
+# ifdef DYN_DISABLE_AUTH
+static int disable_auth;
 
 /******************************************************************************
  * API to dynamically disable authentication. Only meant for development
@@ -103,55 +29,29 @@ static void check_Secure_Data (void)
  *****************************************************************************/
 void dyn_disable_auth(void)
 {
-	if (!uartDisable)
-		INFO("Disabling authentication of images dynamically\n");
-
+	INFO("Disabling authentication of images dynamically\n");
 	disable_auth = 1;
-
-#if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)
-#if defined(IMAGE_BL31)
-	/* Read EFUSE error. Try to get secure data from DRAM (BL31) */
-	check_Secure_Data();
-#endif
-#endif
 }
+# endif /* DYN_DISABLE_AUTH */
 
 /******************************************************************************
  * Function to determine whether the authentication is disabled dynamically.
  *****************************************************************************/
 static int dyn_is_auth_disabled(void)
 {
-#ifdef DYN_DISABLE_AUTH
-#if defined(TCSUPPORT_ARM_SECURE_BOOT_FLASH_KEY)
-#if defined(IMAGE_BL23)
-	if (disable_auth)
-	{
-		if (plat_check_secure_boot_flash_key())
-		{
-			/* Read EFUSE error. Try to get secure data from flash (BL2) */
-			check_Secure_Data();
-		}
-		else
-		{
-			uint8_t *buf = (uint8_t *)FREE_DRAM_ADDRESS;
-
-			/* Clear specified DRAM data */
-			memset (buf, 0, sizeof(uint8_t));
-		}
-	}
-#endif
-#endif
+# ifdef DYN_DISABLE_AUTH
 	return disable_auth;
-#else
+# else
 	return 0;
-#endif
+# endif
 }
+#endif /* TRUSTED_BOARD_BOOT */
 
 uintptr_t page_align(uintptr_t value, unsigned dir)
 {
 	/* Round up the limit to the next page boundary */
-	if ((value & PAGE_SIZE_MASK) != 0U) {
-		value &= ~PAGE_SIZE_MASK;
+	if ((value & (PAGE_SIZE - 1U)) != 0U) {
+		value &= ~(PAGE_SIZE - 1U);
 		if (dir == UP)
 			value += PAGE_SIZE;
 	}
@@ -180,7 +80,7 @@ static int load_image(unsigned int image_id, image_info_t *image_data)
 	assert(image_data != NULL);
 	assert(image_data->h.version >= VERSION_2);
 
-#if defined(IMAGE_BL31)
+#if defined(CONFIG_ECNT) && defined(IMAGE_BL31)
 	if ((image_id == BL2_IMAGE_ID) || (image_id == BL33_IMAGE_ID))
 	{
 		if((image_data->image_base == TZRAM2_BASE) || (dyn_is_auth_disabled() != 0))
@@ -254,6 +154,38 @@ exit:
 	return io_result;
 }
 
+/*
+ * Load an image and flush it out to main memory so that it can be executed
+ * later by any CPU, regardless of cache and MMU state.
+ */
+static int load_image_flush(unsigned int image_id,
+			    image_info_t *image_data)
+{
+	int rc;
+
+	rc = load_image(image_id, image_data);
+
+#if defined(CONFIG_ECNT) && defined(IMAGE_BL31)
+	if (image_data->image_size == 0)
+		return rc;
+#endif
+
+	if (rc == 0) {
+		flush_dcache_range(image_data->image_base,
+				   image_data->image_size);
+	}
+
+#if defined(CONFIG_ECNT)
+	if (rc == 0)
+		NOTICE("4-2-1\n");
+	else
+		NOTICE("4-2-2\n");
+#endif
+
+	return rc;
+}
+
+
 #if TRUSTED_BOARD_BOOT
 /*
  * This function uses recursion to authenticate the parent images up to the root
@@ -286,7 +218,7 @@ static int load_auth_image_recursive(unsigned int image_id,
 				 (void *)image_data->image_base,
 				 image_data->image_size);
 
-#if defined(IMAGE_BL31)
+#if defined(CONFIG_ECNT) && defined(IMAGE_BL31)
 	auth_img_flags[image_id] &= ~IMG_FLAG_AUTHENTICATED;
 	if (image_data->image_size == 0)
 	{
@@ -306,6 +238,16 @@ static int load_auth_image_recursive(unsigned int image_id,
 		return -EAUTH;
 	}
 
+	/*
+	 * Flush the image to main memory so that it can be executed later by
+	 * any CPU, regardless of cache and MMU state. This is only needed for
+	 * child images, not for the parents (certificates).
+	 */
+	if (is_parent_image == 0) {
+		flush_dcache_range(image_data->image_base,
+				   image_data->image_size);
+	}
+
 	return 0;
 }
 #endif /* TRUSTED_BOARD_BOOT */
@@ -313,18 +255,24 @@ static int load_auth_image_recursive(unsigned int image_id,
 static int load_auth_image_internal(unsigned int image_id,
 				    image_info_t *image_data)
 {
+#if !defined(CONFIG_ECNT)
 #if TRUSTED_BOARD_BOOT
 	if (dyn_is_auth_disabled() == 0) {
-		if (!uartDisable)
-			NOTICE("4-1\n");
-
 		return load_auth_image_recursive(image_id, image_data, 0);
 	}
 #endif
-	if (!uartDisable)
-		NOTICE("4-2\n");
+#else
+#if TRUSTED_BOARD_BOOT
+	if (dyn_is_auth_disabled() == 0) {
+		NOTICE("4-1\n");
+		return load_auth_image_recursive(image_id, image_data, 0);
+	}
+	else
+#endif
+	NOTICE("4-2\n");
+#endif
 
-	return load_image(image_id, image_data);
+	return load_image_flush(image_id, image_data);
 }
 
 /*******************************************************************************
@@ -338,37 +286,9 @@ int load_auth_image(unsigned int image_id, image_info_t *image_data)
 {
 	int err;
 
-/*
- * All firmware banks should be part of the same non-volatile storage as per
- * PSA FWU specification, hence don't check for any alternate boot source
- * when PSA FWU is enabled.
- */
-#if PSA_FWU_SUPPORT
-	err = load_auth_image_internal(image_id, image_data);
-#else
 	do {
 		err = load_auth_image_internal(image_id, image_data);
 	} while ((err != 0) && (plat_try_next_boot_source() != 0));
-#endif /* PSA_FWU_SUPPORT */
-
-	if (err == 0) {
-		/*
-		 * If loading of the image gets passed (along with its
-		 * authentication in case of Trusted-Boot flow) then measure
-		 * it (if MEASURED_BOOT flag is enabled).
-		 */
-		err = plat_mboot_measure_image(image_id, image_data);
-		if (err != 0) {
-			return err;
-		}
-
-		/*
-		 * Flush the image to main memory so that it can be executed
-		 * later by any CPU, regardless of cache and MMU state.
-		 */
-		flush_dcache_range(image_data->image_base,
-				   image_data->image_size);
-	}
 
 	return err;
 }
@@ -378,10 +298,8 @@ int load_auth_image(unsigned int image_id, image_info_t *image_data)
  ******************************************************************************/
 void print_entry_point_info(const entry_point_info_t *ep_info)
 {
-	if (!uartDisable) {
-		INFO("Entry point address = 0x%lx\n", ep_info->pc);
-		INFO("SPSR = 0x%x\n", ep_info->spsr);
-	}
+	INFO("Entry point address = 0x%lx\n", ep_info->pc);
+	INFO("SPSR = 0x%x\n", ep_info->spsr);
 
 #define PRINT_IMAGE_ARG(n)					\
 	VERBOSE("Argument #" #n " = 0x%llx\n",			\
@@ -398,13 +316,4 @@ void print_entry_point_info(const entry_point_info_t *ep_info)
 	PRINT_IMAGE_ARG(7);
 #endif
 #undef PRINT_IMAGE_ARG
-}
-
-/*
- * This function is for returning the TF-A version
- */
-const char *get_version(void)
-{
-	extern const char version[];
-	return version;
 }

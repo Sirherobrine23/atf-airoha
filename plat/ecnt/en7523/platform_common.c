@@ -16,7 +16,6 @@
 #include <plat_private.h>
 #include <en7523_def.h>
 
-extern uint32_t uartDisable;
 /* Table of regions to map using the MMU.  */
 const mmap_region_t plat_mmap[] = {
 	MAP_REGION_FLAT(ECNT_DEV_IO_BASE, ECNT_DEV_IO_SIZE,
@@ -79,13 +78,12 @@ const mmap_region_t plat_mmap[] = {
 DEFINE_CONFIGURE_MMU_EL(svc_mon)
 #else
 DEFINE_CONFIGURE_MMU_EL(el3)
-//DEFINE_CONFIGURE_MMU_EL(svc_mon)
 #endif
 
 
 unsigned int plat_get_syscnt_freq2(void)
 {
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7552)
 	/* 7581 CPU timer clk fixed in 25M*/
 	return SYS_COUNTER_FREQ_IN_TICKS_25M;
 #else
@@ -123,16 +121,13 @@ unsigned int is_asic(void)
 {
 	if (get_asic_mode_by_efuse())
 	{
-		if(!uartDisable){
 		NOTICE("ASIC Mode by efuse\n");
-		}
+
 		return 1;
 	}
 	else
 	{
-		if(!uartDisable){
 		NOTICE("ASIC Mode by register\n");
-		}
 		return ((mmio_read_32(EN7523_SSTR_REG) & IS_ASIC) == IS_ASIC);
 	}
 }

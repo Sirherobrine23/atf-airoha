@@ -20,7 +20,7 @@
 
 /* Aggregate of all devices in the first GB */
 #define ECNT_DEV_IO_BASE	(0x8000000)
-#define ECNT_DEV_IO_SIZE	(0x17D00000)
+#define ECNT_DEV_IO_SIZE	(0x17C00000)
 
 #define ECNT_GIC_BASE		(0x9000000)
 #define ECNT_GIC_SIZE		(0x440000)
@@ -99,8 +99,6 @@
 #define MODULE_NPU_SRAM_OFF	(U(1) << 12)
 
 #define EN7523_HWTRAP_CONF	(IO_PHYS + 0xFB000B4)
-#define DRAMC_CONF			(IO_PHYS + 0xFB00074)
-
 
 #ifdef TCSUPPORT_CPU_AN7552
 #define BL2_OPTIMIZE_STATUS	(ECNT_NPU_SRAM_BASE + ECNT_L2_SRAM_SIZE)
@@ -113,25 +111,16 @@
 #define BL2_OPTIMIZE_BASE	ECNT_NPU_SRAM_BASE+0x40400
 #endif
 
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583) || defined(TCSUPPORT_CPU_AN7552)
+#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7552)
 #define HWTRAP_FW_UPGRADE	(U(1) << 4)
 
-#if defined(TCSUPPORT_CPU_EN7581) || defined(TCSUPPORT_CPU_AN7583)
+#if defined(TCSUPPORT_CPU_EN7581)
 #define HWTRAP_INIC_MODE	(0xa)
 
 #define HWTRAP_INIC_MDIO_MODE	(0x2)
 #define HWTRAP_EMMC_MODE		(0x6)
 #define HWTRAP_EMMC_MODE2		(0xe)
 #endif
-
-#define HWTRAP_FLASH_NAND_MODE	(0x3)
-#define HWTRAP_FLASH_NAND_MODE2	(0xb)
-
-#define HWTRAP_FLASH_3BNOR_MODE		(0x1)
-#define HWTRAP_FLASH_3BNOR_MODE2	(0x9)
-#define HWTRAP_FLASH_4BNOR_MODE		(0x0)
-#define HWTRAP_FLASH_4BNOR_MODE2	(0x8)
-
 #define HWTRAP_ROM_3BNOR_MODE		(0x5)
 #define HWTRAP_ROM_4BNOR_MODE		(0x4)
 #define HWTRAP_ROM_NAND_MODE		(0x7)
@@ -173,7 +162,6 @@
 #define DBG_FWU_MODE	0x752302
 #define DBG_FLASH_MODE	0x752303
 #define DBG_INIC_MDIO_MODE 0x758101
-#define DBG_7583_BOOT_MAGIC    0x03
 
 /*******************************************************************************
  * GIC

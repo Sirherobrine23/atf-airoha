@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2023, Arm Limited. All rights reserved.
+# Copyright (c) 2015-2020, ARM Limited and Contributors. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -15,86 +15,36 @@ endif
 
 MBEDTLS_INC		=	-I${MBEDTLS_DIR}/include
 
-MBEDTLS_MAJOR=$(shell grep -hP "define MBEDTLS_VERSION_MAJOR" ${MBEDTLS_DIR}/include/mbedtls/*.h | grep -oe '\([0-9.]*\)')
-MBEDTLS_MINOR=$(shell grep -hP "define MBEDTLS_VERSION_MINOR" ${MBEDTLS_DIR}/include/mbedtls/*.h | grep -oe '\([0-9.]*\)')
-$(info MBEDTLS_VERSION_MAJOR is [${MBEDTLS_MAJOR}] MBEDTLS_VERSION_MINOR is [${MBEDTLS_MINOR}])
-
 # Specify mbed TLS configuration file
-ifeq (${MBEDTLS_MAJOR}, 2)
-        $(info Deprecation Notice: Please migrate to Mbedtls version 3.x (refer to TF-A documentation for the exact version number))
-	MBEDTLS_CONFIG_FILE             ?=	"<drivers/auth/mbedtls/mbedtls_config-2.h>"
-else ifeq (${MBEDTLS_MAJOR}, 3)
-	ifeq (${PSA_CRYPTO},1)
-		MBEDTLS_CONFIG_FILE     ?=      "<drivers/auth/mbedtls/psa_mbedtls_config.h>"
-	else
-		MBEDTLS_CONFIG_FILE	?=	"<drivers/auth/mbedtls/mbedtls_config-3.h>"
-	endif
-endif
-
+MBEDTLS_CONFIG_FILE	:=	"<drivers/auth/mbedtls/mbedtls_config.h>"
 $(eval $(call add_define,MBEDTLS_CONFIG_FILE))
 
 MBEDTLS_SOURCES	+=		drivers/auth/mbedtls/mbedtls_common.c
 
-LIBMBEDTLS_SRCS		+= $(addprefix ${MBEDTLS_DIR}/library/,		\
-					aes.c 				\
-					asn1parse.c 			\
-					asn1write.c 			\
-					cipher.c 			\
-					cipher_wrap.c 			\
-					memory_buffer_alloc.c		\
-					oid.c 				\
-					platform.c 			\
-					platform_util.c			\
-					bignum.c			\
-					gcm.c 				\
-					md.c				\
-					pk.c 				\
-					pk_wrap.c 			\
-					pkparse.c 			\
-					pkwrite.c 			\
-					sha256.c            		\
-					sha512.c            		\
-					ecdsa.c				\
-					ecp_curves.c			\
-					ecp.c				\
-					rsa.c				\
-					x509.c 				\
-					x509_crt.c 			\
-					pkcs5.c				\
+
+LIBMBEDTLS_SRCS		:= $(addprefix ${MBEDTLS_DIR}/library/,	\
+					aes.c 					\
+					asn1parse.c 				\
+					cipher.c 				\
+					cipher_wrap.c 				\
+					memory_buffer_alloc.c			\
+					oid.c 					\
+					platform.c 				\
+					platform_util.c				\
+					bignum.c				\
+					gcm.c 					\
+					md.c					\
+					md_wrap.c					\
+					pk.c 					\
+					pk_wrap.c 					\
+					pkparse.c 				\
+					sha256.c            			\
+					sha512.c            			\
+					rsa.c					\
+					rsa_internal.c				\
+					x509.c 					\
+					x509_crt.c 				\
 					)
-
-ifeq (${MBEDTLS_MAJOR}, 2)
-	LIBMBEDTLS_SRCS +=  $(addprefix ${MBEDTLS_DIR}/library/,	\
-						md_wrap.c		\
-						rsa_internal.c		\
-						)
-else ifeq (${MBEDTLS_MAJOR}, 3)
-	LIBMBEDTLS_SRCS +=  $(addprefix ${MBEDTLS_DIR}/library/,	\
-						constant_time.c		\
-						bignum_core.c		\
-						rsa_alt_helpers.c	\
-						hash_info.c		\
-						)
-
-	# Currently on Mbedtls-3 there is outstanding bug due to usage
-	# of redundant declaration[1], So disable redundant-decls
-	# compilation flag to avoid compilation error when compiling with
-	# Mbedtls-3.
-	# [1]: https://github.com/Mbed-TLS/mbedtls/issues/6910
-	LIBMBEDTLS_CFLAGS += -Wno-error=redundant-decls
-endif
-
-ifeq (${PSA_CRYPTO},1)
-LIBMBEDTLS_SRCS         += $(addprefix ${MBEDTLS_DIR}/library/,    	\
-					psa_crypto.c                   	\
-					psa_crypto_client.c            	\
-					psa_crypto_driver_wrappers.c   	\
-					psa_crypto_hash.c              	\
-					psa_crypto_rsa.c               	\
-					psa_crypto_ecp.c               	\
-					psa_crypto_slot_management.c   	\
-					)
-endif
 
 # The platform may define the variable 'TF_MBEDTLS_KEY_ALG' to select the key
 # algorithm to use. If the variable is not defined, select it based on
@@ -111,30 +61,29 @@ endif
 
 ifeq (${TF_MBEDTLS_KEY_SIZE},)
     ifneq ($(findstring rsa,${TF_MBEDTLS_KEY_ALG}),)
-        ifeq (${KEY_SIZE},)
+	ifeq (${KEY_SIZE},)
             TF_MBEDTLS_KEY_SIZE		:=	2048
-        else ifneq ($(filter $(KEY_SIZE), 1024 2048 3072 4096),)
+	else
             TF_MBEDTLS_KEY_SIZE		:=	${KEY_SIZE}
-        else
-            $(error "Invalid value for KEY_SIZE: ${KEY_SIZE}")
-        endif
-    else ifneq ($(findstring ecdsa,${TF_MBEDTLS_KEY_ALG}),)
-        ifeq (${KEY_SIZE},)
-            TF_MBEDTLS_KEY_SIZE		:=	256
-        else ifneq ($(filter $(KEY_SIZE), 256 384),)
-            TF_MBEDTLS_KEY_SIZE		:=	${KEY_SIZE}
-        else
-            $(error "Invalid value for KEY_SIZE: ${KEY_SIZE}")
-        endif
+	endif
     endif
 endif
 
 ifeq (${HASH_ALG}, sha384)
     TF_MBEDTLS_HASH_ALG_ID	:=	TF_MBEDTLS_SHA384
+    MBEDTLS_MD_ID		:=	MBEDTLS_MD_SHA384
+    TPM_ALG_ID			:=	TPM_ALG_SHA384
+    TCG_DIGEST_SIZE		:=	48
 else ifeq (${HASH_ALG}, sha512)
     TF_MBEDTLS_HASH_ALG_ID	:=	TF_MBEDTLS_SHA512
+    MBEDTLS_MD_ID		:=	MBEDTLS_MD_SHA512
+    TPM_ALG_ID			:=	TPM_ALG_SHA512
+    TCG_DIGEST_SIZE		:=	64
 else
     TF_MBEDTLS_HASH_ALG_ID	:=	TF_MBEDTLS_SHA256
+    MBEDTLS_MD_ID		:=	MBEDTLS_MD_SHA256
+    TPM_ALG_ID			:=	TPM_ALG_SHA256
+    TCG_DIGEST_SIZE		:=	32
 endif
 
 ifeq (${TF_MBEDTLS_KEY_ALG},ecdsa)
@@ -153,28 +102,25 @@ else
     TF_MBEDTLS_USE_AES_GCM	:=	0
 endif
 else
-ifeq ($(TCSUPPORT_CPU_AN7583),1)
-	TF_MBEDTLS_KEY_ALG		:=	rsa+ecdsa
-    TF_MBEDTLS_KEY_ALG_ID	:=	TF_MBEDTLS_RSA_AND_ECDSA
-else
 	TF_MBEDTLS_KEY_ALG		:=	rsa
-    TF_MBEDTLS_KEY_ALG_ID	:=	TF_MBEDTLS_RSA
-endif
 	TF_MBEDTLS_KEY_SIZE		:=	4096
     TF_MBEDTLS_HASH_ALG_ID	:=	TF_MBEDTLS_SHA512
-        TPM_ALG_ID				:=	TPM_ALG_SHA512
+    TF_MBEDTLS_KEY_ALG_ID	:=	TF_MBEDTLS_RSA
+    TPM_ALG_ID				:=	TPM_ALG_SHA512
     TCG_DIGEST_SIZE			:=	64
     TF_MBEDTLS_USE_AES_GCM	:=	1
 endif
 
 # Needs to be set to drive mbed TLS configuration correctly
-$(eval $(call add_defines,\
-    $(sort \
-        TF_MBEDTLS_KEY_ALG_ID \
-        TF_MBEDTLS_KEY_SIZE \
-        TF_MBEDTLS_HASH_ALG_ID \
-        TF_MBEDTLS_USE_AES_GCM \
-)))
+$(eval $(call add_define,TF_MBEDTLS_KEY_ALG_ID))
+$(eval $(call add_define,TF_MBEDTLS_KEY_SIZE))
+$(eval $(call add_define,TF_MBEDTLS_HASH_ALG_ID))
+$(eval $(call add_define,TF_MBEDTLS_USE_AES_GCM))
+
+# Set definitions for measured boot driver
+$(eval $(call add_define,MBEDTLS_MD_ID))
+$(eval $(call add_define,TPM_ALG_ID))
+$(eval $(call add_define,TCG_DIGEST_SIZE))
 
 $(eval $(call MAKE_LIB,mbedtls))
 

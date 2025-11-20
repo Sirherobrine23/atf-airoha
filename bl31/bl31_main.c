@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2023, Arm Limited and Contributors. All rights reserved.
+ * Copyright (c) 2013-2019, ARM Limited and Contributors. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -14,10 +14,8 @@
 #include <bl31/ehf.h>
 #include <common/bl_common.h>
 #include <common/debug.h>
-#include <common/feat_detect.h>
 #include <common/runtime_svc.h>
 #include <drivers/console.h>
-#include <lib/bootmarker_capture.h>
 #include <lib/el3_runtime/context_mgmt.h>
 #include <lib/pmf/pmf.h>
 #include <lib/runtime_instr.h>
@@ -25,13 +23,8 @@
 #include <services/std_svc.h>
 
 #if ENABLE_RUNTIME_INSTRUMENTATION
-	PMF_REGISTER_SERVICE_SMC(rt_instr_svc, PMF_RT_INSTR_SVC_ID,
-		RT_INSTR_TOTAL_IDS, PMF_STORE_ENABLE)
-#endif
-
-#if ENABLE_RUNTIME_INSTRUMENTATION
-	PMF_REGISTER_SERVICE(bl_svc, PMF_RT_INSTR_SVC_ID,
-		BL_TOTAL_IDS, PMF_DUMP_ENABLE)
+PMF_REGISTER_SERVICE_SMC(rt_instr_svc, PMF_RT_INSTR_SVC_ID,
+	RT_INSTR_TOTAL_IDS, PMF_STORE_ENABLE)
 #endif
 
 /*******************************************************************************
@@ -42,33 +35,12 @@
  ******************************************************************************/
 static int32_t (*bl32_init)(void);
 
-/*****************************************************************************
- * Function used to initialise RMM if RME is enabled
- *****************************************************************************/
-#if ENABLE_RME
-static int32_t (*rmm_init)(void);
-#endif
-
 /*******************************************************************************
  * Variable to indicate whether next image to execute after BL31 is BL33
  * (non-secure & default) or BL32 (secure).
  ******************************************************************************/
 static uint32_t next_image_type = NON_SECURE;
 
-#ifdef SUPPORT_UNKNOWN_MPID
-/*
- * Flag to know whether an unsupported MPID has been detected. To avoid having it
- * landing on the .bss section, it is initialized to a non-zero value, this way
- * we avoid potential WAW hazards during system bring up.
- * */
-volatile uint32_t unsupported_mpid_flag = 1;
-#endif
-
-#ifndef TCSUPPORT_UART_DISABLE
-uint32_t uartDisable = 0;
-#else
-uint32_t uartDisable = 1;
-#endif 
 /*
  * Implement the ARM Standard Service function to get arguments for a
  * particular service.
@@ -103,7 +75,7 @@ void bl31_setup(u_register_t arg0, u_register_t arg1, u_register_t arg2,
 
 	/* Perform late platform-specific setup */
 	bl31_plat_arch_setup();
-	
+
 #if CTX_INCLUDE_PAUTH_REGS
 	/*
 	 * Assert that the ARMv8.3-PAuth registers are present or an access
@@ -111,18 +83,6 @@ void bl31_setup(u_register_t arg0, u_register_t arg1, u_register_t arg2,
 	 */
 	assert(is_armv8_3_pauth_present());
 #endif /* CTX_INCLUDE_PAUTH_REGS */
-}
-
-void _bl31_debug_delay(void){
-	int i =0;
-
-	for (i=0;i<20;i++){
-		if(i&0x2){
-			printf(" %s, %d, %d\n",__FUNCTION__, __LINE__, i);
-			mdelay(500);
-		}
-	}
-	
 }
 
 /*******************************************************************************
@@ -135,30 +95,8 @@ void _bl31_debug_delay(void){
  ******************************************************************************/
 void bl31_main(void)
 {
-	/* Init registers that never change for the lifetime of TF-A */
-	cm_manage_extensions_el3();
-
-	/* Init per-world context registers for non-secure world */
-	manage_extensions_nonsecure_per_world();
-	if (!uartDisable) {
-		NOTICE("BL31: %s\n", version_string);
-		NOTICE("BL31: %s\n", build_message);
-	}
-
-#if FEATURE_DETECTION
-	/* Detect if features enabled during compilation are supported by PE. */
-	detect_arch_features();
-#endif /* FEATURE_DETECTION */
-
-#if ENABLE_RUNTIME_INSTRUMENTATION
-	PMF_CAPTURE_TIMESTAMP(bl_svc, BL31_ENTRY, PMF_CACHE_MAINT);
-#endif
-
-#ifdef SUPPORT_UNKNOWN_MPID
-	if (unsupported_mpid_flag == 0) {
-		NOTICE("Unsupported MPID detected!\n");
-	}
-#endif
+	NOTICE("BL31: %s\n", version_string);
+	NOTICE("BL31: %s\n", build_message);
 
 	/* Perform platform setup in BL31 */
 	bl31_platform_setup();
@@ -172,56 +110,33 @@ void bl31_main(void)
 #endif
 
 	/* Initialize the runtime services e.g. psci. */
-	if (!uartDisable)
-		INFO("BL31: Initializing runtime services\n");
-
+	INFO("BL31: Initializing runtime services\n");
 	runtime_svc_init();
 
 	/*
 	 * All the cold boot actions on the primary cpu are done. We now need to
-	 * decide which is the next image and how to execute it.
+	 * decide which is the next image (BL32 or BL33) and how to execute it.
 	 * If the SPD runtime service is present, it would want to pass control
 	 * to BL32 first in S-EL1. In that case, SPD would have registered a
 	 * function to initialize bl32 where it takes responsibility of entering
-	 * S-EL1 and returning control back to bl31_main. Similarly, if RME is
-	 * enabled and a function is registered to initialize RMM, control is
-	 * transferred to RMM in R-EL2. After RMM initialization, control is
-	 * returned back to bl31_main. Once this is done we can prepare entry
-	 * into BL33 as normal.
+	 * S-EL1 and returning control back to bl31_main. Once this is done we
+	 * can prepare entry into BL33 as normal.
 	 */
 
 	/*
 	 * If SPD had registered an init hook, invoke it.
 	 */
+	/* Temporary workaround to skip OP-TEE */
+	#if(0)
 	if (bl32_init != NULL) {
-		if(!uartDisable){
 		INFO("BL31: Initializing BL32\n");
-		}
-		console_flush();
+
 		int32_t rc = (*bl32_init)();
 
-		if (rc == 0) {
+		if (rc == 0)
 			WARN("BL31: BL32 initialization failed\n");
-		}
 	}
-
-	/*
-	 * If RME is enabled and init hook is registered, initialize RMM
-	 * in R-EL2.
-	 */
-#if ENABLE_RME
-	if (rmm_init != NULL) {
-		INFO("BL31: Initializing RMM\n");
-
-		console_flush();
-		int32_t rc = (*rmm_init)();
-
-		if (rc == 0) {
-			WARN("BL31: RMM initialization failed\n");
-		}
-	}
-#endif
-
+	#endif
 	/*
 	 * We are ready to enter the next EL. Prepare entry into the image
 	 * corresponding to the desired security state after the next ERET.
@@ -235,11 +150,6 @@ void bl31_main(void)
 	 * from BL31
 	 */
 	bl31_plat_runtime_setup();
-
-#if ENABLE_RUNTIME_INSTRUMENTATION
-	PMF_CAPTURE_TIMESTAMP(bl_svc, BL31_EXIT, PMF_CACHE_MAINT);
-	console_flush();
-#endif
 }
 
 /*******************************************************************************
@@ -289,22 +199,12 @@ void __init bl31_prepare_next_image_entry(void)
 	next_image_info = bl31_plat_get_next_image_ep_info(image_type);
 	assert(next_image_info != NULL);
 	assert(image_type == GET_SECURITY_STATE(next_image_info->h.attr));
-	if(!uartDisable){
+
 	INFO("BL31: Preparing for EL3 exit to %s world\n",
 		(image_type == SECURE) ? "secure" : "normal");
-	}
 	print_entry_point_info(next_image_info);
 	cm_init_my_context(next_image_info);
-
-	/*
-	* If we are entering the Non-secure world, use
-	* 'cm_prepare_el3_exit_ns' to exit.
-	*/
-	if (image_type == NON_SECURE) {
-		cm_prepare_el3_exit_ns();
-	} else {
-		cm_prepare_el3_exit(image_type);
-	}
+	cm_prepare_el3_exit(image_type);
 }
 
 /*******************************************************************************
@@ -315,14 +215,3 @@ void bl31_register_bl32_init(int32_t (*func)(void))
 {
 	bl32_init = func;
 }
-
-#if ENABLE_RME
-/*******************************************************************************
- * This function initializes the pointer to RMM init function. This is expected
- * to be called by the RMMD after it finishes all its initialization
- ******************************************************************************/
-void bl31_register_rmm_init(int32_t (*func)(void))
-{
-	rmm_init = func;
-}
-#endif
