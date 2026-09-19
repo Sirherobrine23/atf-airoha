@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <common/bl_common.h>
 #include <common/debug.h>
 #include <lib/mmio.h>
 

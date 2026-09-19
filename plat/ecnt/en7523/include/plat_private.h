@@ -110,4 +110,13 @@ void plat_configure_mmu_el3(unsigned long total_base,
 #endif
 /* Declarations for plat_topology.c */
 int mt_setup_topology(void);
+
+/*
+ * Defined unconditionally in common/bl_common.c, but its prototype in
+ * include/common/bl_common.h is only visible when
+ * TRUSTED_BOARD_BOOT && DYN_DISABLE_AUTH -- which this platform's BL2/BL21
+ * build does not set. Declare it here so efuse.c's unconditional call
+ * doesn't rely on an implicit declaration.
+ */
+void dyn_disable_auth(void);
 #endif /* PLAT_PRIVATE_H */
