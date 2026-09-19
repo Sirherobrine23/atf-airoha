@@ -30,6 +30,15 @@ if [ "${OPTEE}" = "yes" ]; then
 	BSP_CFLAGS="${BSP_CFLAGS} -DTCSUPPORT_OPTEE"
 fi
 
+# Please check:
+#  - OVERRIDE_UBI_START_ADDR value should be a multiplier of flash erase
+#    block size. Minimal value is
+#      - 0x20000 for flashes with 128K erase block
+#      - 0x40000 for flashes with 256K erase block
+#  - OVERRIDE_PLAT_ECNT_BL31_FIP_OFFSET value should be a multiplier of
+#    eMMC I/O block (512 bytes). Minimal value is 0x20000
+#  - TCSUPPORT_GPT_ATF_SUPPORT should not be defined/enabled if GPT
+#    partitioning is not used for eMMC
 ATF_CFLAGS_COMMON="${BSP_CFLAGS} -Wl,--no-warn-execstack \
 	-Wno-error=missing-include-dirs -Wno-error=redundant-decls \
 	-DTCSUPPORT_UBI_SUPPORT -DOVERRIDE_UBI_START_ADDR=0x100000 \

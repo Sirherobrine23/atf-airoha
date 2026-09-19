@@ -3,6 +3,8 @@
 BASE_DIR="$(pwd)"
 
 CHIP="en7523"
+BL31_USE_BLOB="yes"      # don't build BL31, use prebuilt BL31 blob
+BL31_EFUSE_DISABLE="yes" # if BL31_USE_BLOB="no", build BL31 with disabled EFUSE
 OUT_DIR="${BASE_DIR}/out/${CHIP}"
 
 BUILD_ATF_DIR="${BASE_DIR}/arm-trusted-firmware-2.10.0"
@@ -22,6 +24,11 @@ BSP_CFLAGS="-fsigned-char \
 	"
 LDFLAGS=""
 
+# Please check:
+#  - OVERRIDE_UBI_START_ADDR value should be a multiplier of flash erase
+#    block size. Minimal value is
+#      - 0x20000 for flashes with 128K erase block
+#      - 0x40000 for flashes with 256K erase block
 ATF_CFLAGS_COMMON="${BSP_CFLAGS} -Wl,--no-warn-execstack \
 	-Wno-error=missing-include-dirs -Wno-error=redundant-decls \
 	-DTCSUPPORT_UBI_SUPPORT -DOVERRIDE_UBI_START_ADDR=0x100000"
@@ -32,6 +39,12 @@ ATF_CROSS_COMPILE_AARCH32="${ATF_CROSS_PATH_AARCH32}/arm-openwrt-linux-"
 ATF_LDFLAGS_AARCH32="${LDFLAGS} --no-warn-execstack"
 ATF_CFLAGS_AARCH32="${ATF_CFLAGS_COMMON} --param=min-pagesize=0"
 
+ATF_CROSS_STAGING_DIR_AARCH64="${BASE_DIR}/toolchain-aarch64"
+ATF_CROSS_PATH_AARCH64="${ATF_CROSS_STAGING_DIR_AARCH64}/bin"
+ATF_CROSS_COMPILE_AARCH64="${ATF_CROSS_PATH_AARCH64}/aarch64-openwrt-linux-"
+ATF_LDFLAGS_AARCH64="${LDFLAGS} --no-warn-execstack --no-warn-rwx-segments"
+ATF_CFLAGS_AARCH64="${ATF_CFLAGS_COMMON}"
+
 export BSP_CFLAGS
 
 export TCSUPPORT_BB_FIX_UNOPEN=1
@@ -39,6 +52,14 @@ export TCSUPPORT_BL2_OPTIMIZATION=1
 export TCSUPPORT_CPU_EN7523=1
 export TCSUPPORT_UBI_SUPPORT=1
 export TCSUPPORT_UBOOT=1
+
+if [ "${BL31_EFUSE_DISABLE}" = "yes" ]; then
+	EFUSE_BL31_OPT="EFUSE_DISABLE=1"
+	EFUSE_BL31_CFLAGS="-DEFUSE_DISABLE"
+else
+	EFUSE_BL31_OPT=""
+	EFUSE_BL31_CFLAGS=""
+fi
 
 aarch32_clean() {
 	echo ">>> ATF: cleanup (aarch32) ..."
@@ -85,6 +106,30 @@ aarch32_build_bl23() {
 		LDFLAGS="${ATF_LDFLAGS_AARCH32}"
 }
 
+aarch64_clean() {
+	[ "${BL31_USE_BLOB}" = "yes" ] && return
+	echo ">>> ATF: cleanup (aarch64) ..."
+	make -C "${BUILD_ATF_DIR}" PLAT=en7523 ARCH=aarch64 distclean         \
+		STAGING_DIR=${ATF_CROSS_STAGING_DIR_AARCH64}                  \
+		CROSS_COMPILE_PATH=${ATF_CROSS_PATH_AARCH64}                  \
+		CROSS_COMPILE_ATF=${ATF_CROSS_COMPILE_AARCH64}                \
+		BSP_CFLAGS="${ATF_CFLAGS_AARCH64}"                            \
+		LDFLAGS="${ATF_LDFLAGS_AARCH64}"
+}
+
+aarch64_build_bl31() {
+	[ "${BL31_USE_BLOB}" = "yes" ] && return
+	echo ">>> ATF: building BL31 (aarch64) ..."
+	make -C "${BUILD_ATF_DIR}" PLAT=en7523 ARCH=aarch64 bl31              \
+		${EFUSE_BL31_OPT}                                             \
+		TOOLS_DIR=${BASE_DIR}/../bin/                                 \
+		STAGING_DIR=${ATF_CROSS_STAGING_DIR_AARCH64}                  \
+		CROSS_COMPILE_PATH=${ATF_CROSS_PATH_AARCH64}                  \
+		CROSS_COMPILE_ATF=${ATF_CROSS_COMPILE_AARCH64}                \
+		BSP_CFLAGS="${ATF_CFLAGS_AARCH64} ${EFUSE_BL31_CFLAGS}"       \
+		LDFLAGS="${ATF_LDFLAGS_AARCH64}"
+}
+
 if [ ! -e "${BUILD_ATF_DIR}/plat/ecnt/blobs/en7523/bl1.bin" ]; then
     echo
     echo "WARNING: EN7523 SoC blobs are missed. Please find missed blobs"
@@ -123,6 +168,10 @@ export PATH="${BASE_DIR}/bin:${PATH}"
   && aarch32_clean \
   && aarch32_build_bl23 \
   && echo ------------------------------------------------ \
+  && aarch32_clean \
+  && aarch64_clean \
+  && aarch64_build_bl31 \
+  && echo ------------------------------------------------ \
 ) || exit 1
 
 if [ ! -e ../bin/trx-airoha ]; then
@@ -153,4 +202,8 @@ mv bl2_crc.bin "${OUT_DIR}/${CHIP}-bl2.bin"
 rm bl2.tmp
 
 cp ${BUILD_ATF_DIR}/plat/ecnt/blobs/en7523/bl1.bin "${OUT_DIR}/${CHIP}-bl1.bin"
-../bin/lzma e ${BUILD_ATF_DIR}/plat/ecnt/blobs/en7523/bl31.bin "${OUT_DIR}/${CHIP}-bl31.lzma"
+if [ "${BL31_USE_BLOB}" = "yes" ]; then
+	../bin/lzma e ${BUILD_ATF_DIR}/plat/ecnt/blobs/en7523/bl31.bin "${OUT_DIR}/${CHIP}-bl31.lzma"
+else
+	../bin/lzma e ${BUILD_ATF_DIR}/build/en7523/release/bl31.bin "${OUT_DIR}/${CHIP}-bl31.lzma"
+fi
